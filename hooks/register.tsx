@@ -66,7 +66,7 @@ async function loadPlan($: EngineInterface) {
   // Une revue en attente au moment de la fermeture redevient visible
   const pending = saved.tasks.find(t => t.status === 'review')
   if (pending?.summary) {
-    await update($, reviewAtom, () => ({ taskId: pending.id, summary: pending.summary!, files: [] }))
+    await update($, reviewAtom, () => ({ kind: 'task', taskId: pending.id, summary: pending.summary!, files: [] }))
   }
 }
 
@@ -157,13 +157,14 @@ function elapsed(ms: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Décisions de revue : déclenchent un nouveau tour pour l'orchestrateur
+// Décisions de revue : relancent l’orchestrateur, sauf la validation finale qui referme le suivi
 // ---------------------------------------------------------------------------
 async function approve($: EngineInterface) {
   const review = await read($, reviewAtom)
   if (!review) return
   const note = draft.trim()
   draft = ''
+  if (review.kind === 'plan') return closePlan($)
   await setTask($, review.taskId, { status: 'done', feedback: note || undefined })
   await update($, reviewAtom, () => null)
   await update($, tabAtom, () => 'plan')
@@ -172,9 +173,21 @@ async function approve($: EngineInterface) {
   const text =
     `✅ Tâche ${review.taskId} validée.` +
     (note ? ` Remarque à prendre en compte pour la suite : ${note}` : '') +
-    (next ? ` Passe à la tâche ${next.id} (${next.title}).` : ' C’était la dernière tâche du plan : fais un bilan final.')
+    (next
+      ? ` Passe à la tâche ${next.id} (${next.title}).`
+      : ' C’était la dernière tâche du plan : appelle plan_review avec le bilan final du plan entier.')
   // Ne pas attendre : submit attend que la session soit libre
   void $.prompt.submit({ text, asUser: true }).catch(() => {})
+}
+
+// Revue finale validée : le suivi se referme, sans relancer Claude
+async function closePlan($: EngineInterface) {
+  await setPlan($, () => null)
+  await update($, reviewAtom, () => null)
+  await update($, agentsAtom, () => [])
+  await update($, tabAtom, () => 'plan')
+  $.ui.toast('Plan terminé ✅')
+  void $.ui.close({ id: PANE }).catch(() => {})
 }
 
 async function requestChanges($: EngineInterface) {
@@ -186,13 +199,16 @@ async function requestChanges($: EngineInterface) {
     return
   }
   draft = ''
-  await setTask($, review.taskId, { status: 'changes', feedback: comment })
+  if (review.kind === 'task') await setTask($, review.taskId, { status: 'changes', feedback: comment })
   await update($, reviewAtom, () => null)
   await update($, tabAtom, () => 'plan')
   void $.prompt.submit({
     text:
-      `✏️ Changements demandés sur la tâche ${review.taskId} : ${comment}\n` +
-      `Corrige (toi-même ou via un sous-agent), puis rappelle task_review pour cette même tâche.`,
+      review.kind === 'plan'
+        ? `✏️ Changements demandés sur le plan : ${comment}\n` +
+          `Corrige (toi-même ou via un sous-agent), puis rappelle plan_review avec le bilan mis à jour.`
+        : `✏️ Changements demandés sur la tâche ${review.taskId} : ${comment}\n` +
+          `Corrige (toi-même ou via un sous-agent), puis rappelle task_review pour cette même tâche.`,
     asUser: true,
   }).catch(() => {})
 }
@@ -251,6 +267,22 @@ export const register: Register = on => {
         required: ['taskId', 'summary'],
       },
     })
+    await $.tool.register({
+      name: 'plan_review',
+      isDeferred: false,
+      description:
+        "Soumet le plan entier à la revue finale de l'utilisateur, une fois toutes les tâches validées. summary : " +
+        'bilan markdown du plan. Après cet appel, TERMINE TON TOUR : si l’utilisateur valide, le suivi se referme ; ' +
+        'sinon ses commentaires arriveront comme un nouveau message.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string', description: 'Bilan markdown du plan entier' },
+          concerns: { type: 'string', description: 'Points d’attention, doutes, dette restante' },
+        },
+        required: ['summary'],
+      },
+    })
 
     await $.command.register({ name: 'plan', description: 'Ouvrir le suivi du plan et des revues', immediate: true })
     await $.command.register({ name: 'plan-reset', description: 'Effacer le plan suivi pour ce dossier' })
@@ -288,7 +320,9 @@ export const register: Register = on => {
             'des sous-agents et une revue entre les tâches, appelle mcp__plan-review__plan_set au début, ' +
             'mcp__plan-review__task_start avant chaque tâche, et à la fin de chaque tâche ' +
             'mcp__plan-review__task_review au lieu de demander la validation dans le chat. Après task_review, ' +
-            "arrête-toi : l'utilisateur valide ou commente depuis la vue dédiée.",
+            "arrête-toi : l'utilisateur valide ou commente depuis la vue dédiée. À la fin du plan, après " +
+            'validation de la dernière tâche, appelle mcp__plan-review__plan_review avec le bilan final, puis ' +
+            'arrête-toi de même.',
         },
       ],
     }
@@ -326,6 +360,7 @@ export const register: Register = on => {
       concerns?: string
     }
     const review: Review = {
+      kind: 'task',
       taskId: input.taskId,
       summary: input.summary,
       files: input.filesChanged ?? [],
@@ -344,6 +379,29 @@ export const register: Register = on => {
     }
   })
 
+  on('tool.call', { tool: 'mcp__plan-review__plan_review' }, async ($, e) => {
+    const input = e as unknown as { summary: string; concerns?: string }
+    const plan = await read($, planAtom)
+    if (!plan) return { result: "Aucun plan suivi. Appelle plan_set d'abord." }
+    const left = plan.tasks.filter(t => t.status !== 'done')
+    if (left.length) {
+      return {
+        result:
+          'Revue finale refusée : toutes les tâches doivent être validées. Restantes : ' +
+          left.map(t => `${t.id} (${t.title})`).join(', ') + '.',
+      }
+    }
+    await update($, reviewAtom, () => ({ kind: 'plan', summary: input.summary, files: [], concerns: input.concerns }))
+    await update($, tabAtom, () => 'review')
+    $.ui.toast('Plan prêt pour la revue finale')
+    void $.ui.open({ id: PANE, title: 'Plan', focus: true }).catch(() => {})
+    return {
+      result:
+        'Revue finale soumise. Termine ton tour maintenant, sans modifier de fichier : ' +
+        "la décision de l'utilisateur arrivera dans un nouveau message, ou le suivi se refermera.",
+    }
+  })
+
   // ---------------- Porte de revue : bloque l'orchestrateur ----------------
   on('tool.call', { tool: ['Agent', 'Edit', 'Write', 'NotebookEdit', 'mcp__plan-review__task_start'] }, async ($, e, next) => {
     if (e.agentId) return next(e)
@@ -351,7 +409,8 @@ export const register: Register = on => {
     if (!review) return next(e)
     return {
       deny:
-        `La tâche ${review.taskId} attend la revue de l'utilisateur. N'avance pas : termine ton tour, ` +
+        (review.kind === 'plan' ? 'Le plan' : `La tâche ${review.taskId}`) +
+        " attend la revue de l'utilisateur. N'avance pas : termine ton tour, " +
         'la décision arrivera dans un nouveau message.',
     }
   })
@@ -461,7 +520,7 @@ export const register: Register = on => {
         </Text>
         {review ? (
           <Text color="permission" bold>
-            ◆ {review.taskId} attend ta revue
+            ◆ {review.kind === 'plan' ? 'le plan' : review.taskId} attend ta revue
           </Text>
         ) : cur ? (
           <Text wrap="truncate">
@@ -666,7 +725,10 @@ export const register: Register = on => {
     } else if (!review) {
       body = <Text dimColor>Aucune revue en attente.</Text>
     } else {
-      const task = plan.tasks.find(t => t.id === review.taskId)
+      const title =
+        review.kind === 'plan'
+          ? `Revue finale : ${plan.title}`
+          : `${review.taskId} ${plan.tasks.find(t => t.id === review.taskId)?.title ?? ''}`
       const md =
         review.summary +
         (review.files.length ? '\n\n**Fichiers modifiés**\n' + review.files.map(f => '- `' + f + '`').join('\n') : '') +
@@ -675,7 +737,7 @@ export const register: Register = on => {
       body = (
         <Box flexDirection="column">
           <Text bold color="permission" wrap="truncate">
-            ◆ {review.taskId} {task?.title ?? ''}
+            ◆ {title}
           </Text>
           <Text> </Text>
           <Markdown text={md.slice(0, 10000)} />
@@ -697,7 +759,10 @@ export const register: Register = on => {
           />
           )}
           <Box flexDirection="row" columnGap={2} marginTop={1}>
-            <Button key="approve" label="Valider et continuer" hotkey="v" autoFocus onPress={() => approve($)} />
+            <Button
+              key="approve"
+              label={review.kind === 'plan' ? 'Valider et clore le plan' : 'Valider et continuer'}
+              hotkey="v" autoFocus onPress={() => approve($)} />
             <Button key="changes" label="Demander des changements" hotkey="c" onPress={() => requestChanges($)} />
           </Box>
         </Box>

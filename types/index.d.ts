@@ -10,13 +10,13 @@ export type Task = {
 
 export type Plan = { title: string; tasks: Task[] }
 
+/** Revue d'une tâche, ou revue finale du plan entier une fois toutes les tâches validées */
 export type Review = {
-  taskId: string
   summary: string
   files: string[]
   tests?: string
   concerns?: string
-}
+} & ({ kind: 'task'; taskId: string } | { kind: 'plan' })
 
 export type AgentRun = {
   id: string

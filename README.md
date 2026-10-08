@@ -15,11 +15,12 @@ Mod Claude Code (v2.1.287+) pour exécuter un plan avec des sous-agents et une r
 
 ## Comment Claude s'en sert
 
-Le mod ajoute trois outils et une courte consigne au prompt système :
+Le mod ajoute quatre outils et une courte consigne au prompt système :
 
 - `plan_set` : déclare le plan (T1, T2…) au début
 - `task_start` : avant de lancer les sous-agents d'une tâche
 - `task_review` : à la fin d'une tâche, à la place de demander la validation dans le chat
+- `plan_review` : une fois toutes les tâches validées, soumet le bilan du plan entier à une revue finale. La valider referme le suivi (plan effacé, panneau fermé) sans relancer Claude. Demander des changements renvoie ton commentaire, comme pour une tâche.
 
 Il suffit de demander, par exemple : « Exécute le plan de `docs/plan.md` avec des sous-agents, revue entre chaque tâche. »
 
