@@ -1,0 +1,4 @@
+# Écrits par Claude Code à chaque chargement
+.claude-plugin/types/
+tsconfig.json
+.DS_Store

@@ -1,0 +1,7 @@
+{
+  "name": "plan-review",
+  "version": "0.1.0",
+  "author": { "name": "Clément" },
+  "description": "Suivi visuel d'un plan exécuté par sous-agents, avec porte de revue entre chaque tâche",
+  "types": "./types/index.d.ts"
+}

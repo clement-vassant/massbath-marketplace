@@ -1,0 +1,67 @@
+# plan-review
+
+Mod Claude Code (v2.1.287+) pour exécuter un plan avec des sous-agents et une revue humaine entre chaque tâche.
+
+## Ce que ça fait
+
+- **Bandeau au-dessus du prompt** : barre de progression du plan, tâche en cours, nombre de sous-agents actifs, et un repère quand une revue t'attend. `0` (prompt vide) ouvre le panneau.
+- **Panneau `/plan`**, trois onglets :
+  - `1` **Plan** : chaque tâche avec son statut (○ à faire, ◐ en cours, ◆ en revue, ✎ à corriger, ● validée), le nombre d'agents lancés et ton dernier commentaire.
+  - `2` **Agents** : chaque sous-agent avec sa tâche, son type, le nombre d'appels d'outils, sa durée, le dernier outil utilisé, puis un extrait de son rapport une fois terminé.
+  - `3` **Revue** : la synthèse de la tâche (markdown, fichiers modifiés, tests, points d'attention), un champ commentaire et deux boutons : `v` **Valider et continuer**, `c` **Demander des changements**.
+- **Porte de revue réelle** : tant qu'une revue est en attente, l'orchestrateur ne peut plus lancer de sous-agent, éditer de fichier ni démarrer une tâche. Ces appels sont refusés côté mod, ce n'est pas seulement une consigne dans le prompt.
+- Ta décision relance Claude automatiquement avec un message clair : tâche validée (avec ta remarque éventuelle) ou changements demandés (avec ton commentaire).
+- Le plan est sauvegardé par dossier de travail. Il survit à un redémarrage, à `/clear` et à `/resume`.
+
+## Comment Claude s'en sert
+
+Le mod ajoute trois outils et une courte consigne au prompt système :
+
+- `plan_set` : déclare le plan (T1, T2…) au début
+- `task_start` : avant de lancer les sous-agents d'une tâche
+- `task_review` : à la fin d'une tâche, à la place de demander la validation dans le chat
+
+Il suffit de demander, par exemple : « Exécute le plan de `docs/plan.md` avec des sous-agents, revue entre chaque tâche. »
+
+## Installation
+
+### Pour développer (recommandé)
+
+```bash
+git clone git@github.com:clement-vassant/plan-review.git ~/claude-mods/plan-review
+```
+
+Puis dans `~/.claude/settings.json`, un chemin absolu par mod, séparés par `:` :
+
+```json
+"env": {
+  "CLAUDE_CODE_PLUGIN_DIRS": "/Users/<toi>/claude-mods/plan-review"
+}
+```
+
+Mise à jour : `git pull`, puis `/reload-plugins` dans la session.
+
+### Pour l'utiliser sans le modifier
+
+Dans un terminal Claude Code :
+
+```
+/plugin install plan-review --marketplace clement-vassant/plan-review
+```
+
+Répondre `y` pour ajouter le marketplace, puis choisir la portée « user ». Le repo étant privé, il faut y avoir accès.
+
+## Vérifier
+
+```bash
+claude plugin validate ./plan-review
+claude plugin test ./plan-review
+```
+
+`/plan-reset` efface le plan suivi pour le dossier courant.
+
+## Limites connues
+
+- Le mod ne voit les sous-agents qu'à leur lancement, à leurs appels d'outils et à leur fin. Pas de streaming de leur réflexion.
+- La qualité de la synthèse dépend de ce que l'orchestrateur écrit dans `task_review`.
+- Comme tout mod, il tourne avec tes droits et sans sandbox.

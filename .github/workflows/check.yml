@@ -1,0 +1,19 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  mod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Validate
+        run: claude plugin validate . --strict
+      - name: Test
+        run: claude plugin test .
