@@ -3,6 +3,6 @@
   "author": {
     "name": "Clément"
   },
-  "description": "Suivi visuel d'un plan exécuté par sous-agents, avec porte de revue entre chaque tâche",
+  "description": "Visual tracking of a plan executed by subagents, with a review gate between each task",
   "types": "./types/index.d.ts"
 }

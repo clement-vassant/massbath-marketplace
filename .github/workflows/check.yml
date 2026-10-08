@@ -13,14 +13,14 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g @anthropic-ai/claude-code
-      - name: Validate (marketplace et plugins)
+      - name: Validate (marketplace and plugins)
         run: claude plugin validate .
-      - name: Test (chaque plugin)
+      - name: Test (each plugin)
         run: |
           for dir in $(jq -r '.plugins[].source' .claude-plugin/marketplace.json); do
             echo "::group::$dir"
             claude plugin test "$dir"
             echo "::endgroup::"
           done
-      - name: Packaging (auto-update, installation dans un HOME isolé)
+      - name: Packaging (auto-update, install in an isolated HOME)
         run: bash scripts/test-packaging.sh

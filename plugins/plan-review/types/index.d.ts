@@ -10,7 +10,7 @@ export type Task = {
 
 export type Plan = { title: string; tasks: Task[] }
 
-/** Revue d'une tâche, ou revue finale du plan entier une fois toutes les tâches validées */
+/** Review of one task, or final review of the whole plan once every task is approved */
 export type Review = {
   summary: string
   files: string[]
@@ -29,14 +29,14 @@ export type AgentRun = {
   startedAt: number
   endedAt?: number
   answer?: string
-  /** Consigne donnée au sous-agent */
+  /** Instructions given to the subagent */
   prompt?: string
-  /** Journal de ses appels d'outils, les plus récents à la fin */
+  /** Log of its tool calls, most recent last */
   log?: AgentStep[]
 }
 
 export type AgentStep = {
-  /** Numéro de l'appel chez cet agent */
+  /** Number of the call within this agent */
   n: number
   tool: string
   detail: string

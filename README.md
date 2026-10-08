@@ -1,57 +1,57 @@
 # massbath-marketplace
 
-Marketplace Claude Code de Clément : mods, skills et autres plugins, chacun dans `plugins/<nom>/`.
+Clément's Claude Code marketplace: mods, skills and other plugins, each in `plugins/<name>/`.
 
-| Plugin | Ce qu'il fait |
+| Plugin | What it does |
 | --- | --- |
-| [plan-review](plugins/plan-review/README.md) | Suivi visuel d'un plan exécuté par sous-agents, avec revue entre chaque tâche |
+| [plan-review](plugins/plan-review/README.md) | Visual tracking of a plan executed by subagents, with a review between each task |
 
 ## Installation
 
-Dans un terminal Claude Code, ajoute la marketplace :
+In a Claude Code terminal, add the marketplace:
 
 ```
 /plugin marketplace add clement-vassant/massbath-marketplace
 ```
 
-Puis installe les plugins voulus, en portée « user » :
+Then install the plugins you want, with "user" scope:
 
 ```
 /plugin install plan-review@massbath-marketplace
 ```
 
-Le repo étant privé, il faut y avoir accès (`gh auth login` ou une clé SSH GitHub).
+The repo is private, so you need access to it (`gh auth login` or a GitHub SSH key).
 
-Active enfin la mise à jour automatique : `/plugin` → Marketplaces → massbath-marketplace → **Enable auto-update**. Claude Code récupère alors chaque nouveau commit de `main` au démarrage.
+Finally, turn on automatic updates: `/plugin` → Marketplaces → massbath-marketplace → **Enable auto-update**. Claude Code then fetches each new commit on `main` at startup.
 
-## Développer
+## Development
 
-Pour modifier un plugin et le voir se recharger à chaud, clone le repo et déclare le dossier du plugin dans `~/.claude/settings.json`, un chemin absolu par plugin, séparés par `:` :
+To edit a plugin and see it hot-reload, clone the repo and declare the plugin's folder in `~/.claude/settings.json`, one absolute path per plugin, separated by `:`:
 
 ```json
 "env": {
-  "CLAUDE_CODE_PLUGIN_DIRS": "/Users/<toi>/massbath-marketplace/plugins/plan-review"
+  "CLAUDE_CODE_PLUGIN_DIRS": "/Users/<you>/massbath-marketplace/plugins/plan-review"
 }
 ```
 
-N'installe pas en même temps le même plugin depuis la marketplace.
+Don't install the same plugin from the marketplace at the same time.
 
-### Ajouter un plugin
+### Adding a plugin
 
-1. Crée `plugins/<nom>/` avec son `.claude-plugin/plugin.json`, **sans `version`**.
-2. Ajoute-le dans `.claude-plugin/marketplace.json` (`"source": "./plugins/<nom>"`).
-3. Ajoute sa ligne `/plugin install <nom>@massbath-marketplace` ci-dessus et dans le tableau.
+1. Create `plugins/<name>/` with its `.claude-plugin/plugin.json`, **without a `version`**.
+2. Add it to `.claude-plugin/marketplace.json` (`"source": "./plugins/<name>"`).
+3. Add its `/plugin install <name>@massbath-marketplace` line above and a row in the table.
 
-### Publier une mise à jour
+### Publishing an update
 
-Pousse sur `main`, c'est tout. Les `plugin.json` n'ont volontairement pas de `version` : Claude Code identifie alors chaque version par le commit du repo, donc chaque push est une mise à jour (pour tous les plugins de la marketplace). C'est aussi pourquoi `claude plugin validate` affiche un avertissement sur la version et qu'on ne lance pas `--strict`.
+Push to `main`, that's all. The `plugin.json` files deliberately have no `version`: Claude Code then identifies each version by the repo's commit, so every push is an update (for every plugin in the marketplace). That is also why `claude plugin validate` warns about the version and why `--strict` isn't used.
 
-## Vérifier
+## Checks
 
 ```bash
-claude plugin validate .                     # un avertissement « No version » par plugin est attendu
+claude plugin validate .                     # one "No version" warning per plugin is expected
 claude plugin test plugins/plan-review
-scripts/test-packaging.sh                    # pas de version, noms cohérents, installation réelle dans un HOME jetable
+scripts/test-packaging.sh                    # no version, consistent names, real install in a throwaway HOME
 ```
 
-La CI (`.github/workflows/check.yml`) lance les mêmes vérifications à chaque push.
+CI (`.github/workflows/check.yml`) runs the same checks on every push.

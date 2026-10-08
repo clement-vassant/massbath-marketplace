@@ -1,44 +1,44 @@
 # plan-review
 
-Mod Claude Code (v2.1.287+) pour exécuter un plan avec des sous-agents et une revue humaine entre chaque tâche.
+Claude Code mod (v2.1.287+) for executing a plan with subagents and a human review between each task.
 
-## Ce que ça fait
+## What it does
 
-- **Bandeau au-dessus du prompt** : barre de progression du plan, tâche en cours, nombre de sous-agents actifs, et un repère quand une revue t'attend. `0` (prompt vide) ouvre le panneau.
-- **Panneau `/plan-review`**, trois onglets :
-  - `1` **Plan** : chaque tâche avec son statut (○ à faire, ◐ en cours, ◆ en revue, ✎ à corriger, ● validée), le nombre d'agents lancés et ton dernier commentaire.
-  - `2` **Agents** : chaque sous-agent avec sa tâche, son type, le nombre d'appels d'outils, sa durée, le dernier outil utilisé, puis un extrait de son rapport une fois terminé.
-  - `3` **Revue** : la synthèse de la tâche (markdown, fichiers modifiés, tests, points d'attention), un champ commentaire et deux boutons : `v` **Valider et continuer**, `c` **Demander des changements**.
-- **Porte de revue réelle** : tant qu'une revue est en attente, l'orchestrateur ne peut plus lancer de sous-agent, éditer de fichier ni démarrer une tâche. Ces appels sont refusés côté mod, ce n'est pas seulement une consigne dans le prompt.
-- Ta décision relance Claude automatiquement avec un message clair : tâche validée (avec ta remarque éventuelle) ou changements demandés (avec ton commentaire).
-- Le plan est sauvegardé par dossier de travail. Il survit à un redémarrage, à `/clear` et à `/resume`.
+- **Band above the prompt**: the plan's progress bar, the current task, the number of active subagents, and a marker when a review is waiting for you. `0` (empty prompt) opens the pane.
+- **`/plan-review` pane** (the command opens or closes it), three tabs:
+  - `1` **Plan**: each task with its status (○ to do, ◐ running, ◆ in review, ✎ to fix, ● approved), the number of agents launched and your latest comment.
+  - `2` **Agents**: each subagent with its task, type, number of tool calls, duration, last tool used, then an excerpt of its report once done.
+  - `3` **Review**: the task summary (markdown, files changed, tests, points of attention), a comment field and two buttons: `v` **Approve and continue**, `c` **Request changes**.
+- **A real review gate**: while a review is pending, the orchestrator can no longer launch a subagent, edit a file or start a task. The mod refuses those calls; it is not just an instruction in the prompt.
+- Your decision resumes Claude automatically with a clear message: task approved (with your note, if any) or changes requested (with your comment).
+- The plan is saved per working directory. It survives a restart, `/clear` and `/resume`.
 
-## Comment Claude s'en sert
+## How Claude uses it
 
-Le mod ajoute quatre outils et une courte consigne au prompt système :
+The mod adds four tools and a short instruction to the system prompt:
 
-- `plan_set` : déclare le plan (T1, T2…) au début
-- `task_start` : avant de lancer les sous-agents d'une tâche
-- `task_review` : à la fin d'une tâche, à la place de demander la validation dans le chat
-- `plan_review` : une fois toutes les tâches validées, soumet le bilan du plan entier à une revue finale. La valider referme le suivi (plan effacé, panneau fermé) sans relancer Claude. Demander des changements renvoie ton commentaire, comme pour une tâche.
+- `plan_set`: declares the plan (T1, T2…) at the start
+- `task_start`: before launching a task's subagents
+- `task_review`: at the end of a task, instead of asking for approval in the chat
+- `plan_review`: once every task is approved, submits the summary of the whole plan for a final review. Approving it closes the tracker (plan cleared, pane closed) without resuming Claude. Requesting changes sends your comment back, as for a task.
 
-Il suffit de demander, par exemple : « Exécute le plan de `docs/plan.md` avec des sous-agents, revue entre chaque tâche. »
+Just ask, for example: "Execute the plan in `docs/plan.md` with subagents, with a review between each task."
 
 ## Installation
 
-Ce mod fait partie de la marketplace [massbath-marketplace](../../README.md) :
+This mod is part of the [massbath-marketplace](../../README.md) marketplace:
 
 ```
 /plugin marketplace add clement-vassant/massbath-marketplace
 /plugin install plan-review@massbath-marketplace
 ```
 
-Pour les mises à jour automatiques, le développement et les vérifications, voir le [README de la marketplace](../../README.md).
+For automatic updates, development and checks, see the [marketplace README](../../README.md).
 
-`/plan-reset` efface le plan suivi pour le dossier courant.
+`/plan-reset` clears the tracked plan for the current folder.
 
-## Limites connues
+## Known limitations
 
-- Le mod ne voit les sous-agents qu'à leur lancement, à leurs appels d'outils et à leur fin. Pas de streaming de leur réflexion.
-- La qualité de la synthèse dépend de ce que l'orchestrateur écrit dans `task_review`.
-- Comme tout mod, il tourne avec tes droits et sans sandbox.
+- The mod only sees subagents when they start, when they call tools and when they finish. Their reasoning is not streamed.
+- The quality of the summary depends on what the orchestrator writes in `task_review`.
+- Like any mod, it runs with your permissions and without a sandbox.

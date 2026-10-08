@@ -14,25 +14,25 @@ function flat(el: unknown): string {
   return own + (Array.isArray(c) ? c : [c]).map(flat).join('')
 }
 
-test('cliquer sur un agent ouvre sa vue détaillée avec son activité et son rapport', async ($, on) => {
+test('clicking an agent opens its detail view with its activity and report', async ($, on) => {
   on('session.cwd', async () => ({ value: '/repo' }) as never)
   mock.store(on)
   mock.clock(on)
   on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
   on('ui.toast', async () => ({ value: undefined }) as never)
   on('ui.render', async () => null as never)
-  // Ce que Claude Code ferait : démarrer l'agent, exécuter ses outils, clore son tour
+  // What Claude Code would do: start the agent, run its tools, end its turn
   on('agent.spawn', async () => ({ model: 'sonnet', agentId: 'ag-1' }) as never)
   on('tool.call', async (_$, e) => (e.tool === 'Bash' ? { result: 'BUILD FAILURE', isError: true } : { result: 'ok' }) as never)
   on('turn.complete', async () => ({ text: '' }) as never)
 
   await $.tool.call({ tool: 'mcp__plan-review__plan_set', title: 'P', tasks: [{ id: 'T1', title: 'Port' }] } as never)
   await $.tool.call({ tool: 'mcp__plan-review__task_start', taskId: 'T1' } as never)
-  await $.agent.spawn({ prompt: 'Extrais le port SubscriptionRepository', description: 'Extraire le port', subagentType: 'general-purpose' } as never)
+  await $.agent.spawn({ prompt: 'Extract the SubscriptionRepository port', description: 'Extract the port', subagentType: 'general-purpose' } as never)
   await $.tool.call({ tool: 'Read', file_path: 'src/main/java/Subscription.java', agentId: 'ag-1' } as never)
   await $.tool.call({ tool: 'Bash', command: './mvnw test', agentId: 'ag-1' } as never)
   await $.turn.complete({
-    answer: 'Port extrait, **3 tests** ajoutés.',
+    answer: 'Port extracted, **3 tests** added.',
     durationMs: 1000,
     isAborted: false,
     turnId: 't',
@@ -45,13 +45,13 @@ test('cliquer sur un agent ouvre sa vue détaillée avec son activité et son ra
   await ui.press({ key: 'agent-ag-1' })
 
   const drawn = flat(await ui.drawn())
-  expect(drawn).toContain('Extrais le port SubscriptionRepository')
+  expect(drawn).toContain('Extract the SubscriptionRepository port')
   expect(drawn).toContain('src/main/java/Subscription.java')
   expect(drawn).toContain('./mvnw test')
   expect(drawn).toContain('3 tests')
   expect(drawn).toContain('✕')
 
-  // Retour à la liste
+  // Back to the list
   await ui.press({ key: 'back' })
   expect(await ui.find({ key: 'agent-ag-1' })).toBeDefined()
   await ui.unmount()

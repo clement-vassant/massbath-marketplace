@@ -1,13 +1,13 @@
 {
   "name": "massbath-marketplace",
-  "description": "Mods, skills et autres plugins Claude Code de Clément",
+  "description": "Clément's Claude Code mods, skills and other plugins",
   "owner": {
     "name": "Clément"
   },
   "plugins": [
     {
       "name": "plan-review",
-      "description": "Suivi visuel d'un plan exécuté par sous-agents, avec revue entre chaque tâche",
+      "description": "Visual tracking of a plan executed by subagents, with a review between each task",
       "source": "./plugins/plan-review"
     }
   ]
