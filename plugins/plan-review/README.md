@@ -5,7 +5,7 @@ Mod Claude Code (v2.1.287+) pour exécuter un plan avec des sous-agents et une r
 ## Ce que ça fait
 
 - **Bandeau au-dessus du prompt** : barre de progression du plan, tâche en cours, nombre de sous-agents actifs, et un repère quand une revue t'attend. `0` (prompt vide) ouvre le panneau.
-- **Panneau `/plan`**, trois onglets :
+- **Panneau `/plan-review`**, trois onglets :
   - `1` **Plan** : chaque tâche avec son statut (○ à faire, ◐ en cours, ◆ en revue, ✎ à corriger, ● validée), le nombre d'agents lancés et ton dernier commentaire.
   - `2` **Agents** : chaque sous-agent avec sa tâche, son type, le nombre d'appels d'outils, sa durée, le dernier outil utilisé, puis un extrait de son rapport une fois terminé.
   - `3` **Revue** : la synthèse de la tâche (markdown, fichiers modifiés, tests, points d'attention), un champ commentaire et deux boutons : `v` **Valider et continuer**, `c` **Demander des changements**.

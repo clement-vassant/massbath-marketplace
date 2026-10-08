@@ -284,7 +284,7 @@ export const register: Register = on => {
       },
     })
 
-    await $.command.register({ name: 'plan', description: 'Ouvrir le suivi du plan et des revues', immediate: true })
+    await $.command.register({ name: 'plan-review', description: 'Ouvrir le suivi du plan et des revues', immediate: true })
     await $.command.register({ name: 'plan-reset', description: 'Effacer le plan suivi pour ce dossier' })
 
     // Rafraîchit les durées des sous-agents tant qu'il y en a en cours
@@ -480,7 +480,7 @@ export const register: Register = on => {
   })
 
   // ---------------- Commandes ----------------
-  on('command.run', { command: 'plan' }, async $ => {
+  on('command.run', { command: 'plan-review' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Plan', focus: true, closeOnEscape: true })
     return {}
   })
