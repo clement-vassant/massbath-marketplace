@@ -44,23 +44,15 @@ Mise à jour : `git pull`, puis `/reload-plugins` dans la session.
 
 ### Pour l'utiliser sans le modifier (mises à jour automatiques)
 
-Le repo est sa propre marketplace. Ajoute ceci dans `~/.claude/settings.json` :
+Dans un terminal Claude Code :
 
-```json
-"extraKnownMarketplaces": {
-  "plan-review": {
-    "source": { "source": "github", "repo": "clement-vassant/plan-review" },
-    "autoUpdate": true
-  }
-},
-"enabledPlugins": {
-  "plan-review@plan-review": true
-}
+```
+/plugin install plan-review --marketplace clement-vassant/plan-review
 ```
 
-Au démarrage suivant, Claude Code installe le mod, puis le met à jour tout seul à chaque nouveau commit sur `main`. Le repo étant privé, il faut y avoir accès (`gh auth login` ou une clé SSH GitHub).
+Répondre `y` pour ajouter la marketplace, puis choisir la portée « user ». Le repo étant privé, il faut y avoir accès (`gh auth login` ou une clé SSH GitHub).
 
-Si tu l'as déjà installé à la main (`/plugin install plan-review --marketplace clement-vassant/plan-review`), active la mise à jour automatique dans `/plugin` → Marketplaces → plan-review → Enable auto-update.
+Puis active la mise à jour automatique : `/plugin` → Marketplaces → plan-review → **Enable auto-update**. Claude Code récupère alors chaque nouveau commit de `main` au démarrage.
 
 ### Publier une mise à jour
 

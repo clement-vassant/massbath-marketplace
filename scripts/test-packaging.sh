@@ -33,25 +33,18 @@ else
   pass "marketplace.json liste « $plugin » avec la source ./"
 fi
 
-# 3. Le snippet settings.json du README correspond aux manifestes et au repo GitHub.
-snippet=$(awk '/^```json/ { block = ""; inside = 1; next }
-               /^```/ && inside { if (block ~ /extraKnownMarketplaces/) print block; inside = 0; next }
-               inside { block = block $0 "\n" }' "$README")
+# 3. La commande d'installation du README vise ce plugin et le repo GitHub, et l'auto-update y est expliqué.
 repo=$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')
-if [ -z "$snippet" ] || ! settings=$(jq -e . <<<"{ $snippet }" 2>/dev/null); then
-  fail "README : snippet settings.json introuvable ou JSON invalide"
+install="/plugin install $plugin --marketplace $repo"
+if grep -qxF "$install" "$README"; then
+  pass "README : la commande d'installation est « $install »"
 else
-  check_readme() { # description, filtre jq
-    if jq -e --arg m "$marketplace" --arg id "$plugin@$marketplace" --arg repo "$repo" "$2" <<<"$settings" >/dev/null; then
-      pass "README : $1"
-    else
-      fail "README : $1"
-    fi
-  }
-  check_readme "la marketplace s'appelle « $marketplace »" '.extraKnownMarketplaces | keys == [$m]'
-  check_readme "la source est le repo GitHub « $repo »" '.extraKnownMarketplaces[$m].source == {source: "github", repo: $repo}'
-  check_readme "autoUpdate est activé" '.extraKnownMarketplaces[$m].autoUpdate == true'
-  check_readme "le plugin activé est « $plugin@$marketplace »" '.enabledPlugins == {($id): true}'
+  fail "README : commande d'installation « $install » introuvable"
+fi
+if grep -qF "Enable auto-update" "$README"; then
+  pass "README : l'activation de l'auto-update est expliquée"
+else
+  fail "README : l'activation de l'auto-update (« Enable auto-update ») n'est pas expliquée"
 fi
 
 # 4. Bout en bout : la marketplace s'installe vraiment, dans un HOME jetable.
