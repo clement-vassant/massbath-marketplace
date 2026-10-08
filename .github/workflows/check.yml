@@ -14,6 +14,8 @@ jobs:
           node-version: 22
       - run: npm install -g @anthropic-ai/claude-code
       - name: Validate
-        run: claude plugin validate . --strict
+        run: claude plugin validate .
       - name: Test
         run: claude plugin test .
+      - name: Packaging (auto-update, installation dans un HOME isolé)
+        run: bash scripts/test-packaging.sh

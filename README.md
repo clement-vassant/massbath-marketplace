@@ -41,21 +41,36 @@ Puis dans `~/.claude/settings.json`, un chemin absolu par mod, séparés par `:`
 
 Mise à jour : `git pull`, puis `/reload-plugins` dans la session.
 
-### Pour l'utiliser sans le modifier
+### Pour l'utiliser sans le modifier (mises à jour automatiques)
 
-Dans un terminal Claude Code :
+Le repo est sa propre marketplace. Ajoute ceci dans `~/.claude/settings.json` :
 
+```json
+"extraKnownMarketplaces": {
+  "plan-review": {
+    "source": { "source": "github", "repo": "clement-vassant/plan-review" },
+    "autoUpdate": true
+  }
+},
+"enabledPlugins": {
+  "plan-review@plan-review": true
+}
 ```
-/plugin install plan-review --marketplace clement-vassant/plan-review
-```
 
-Répondre `y` pour ajouter le marketplace, puis choisir la portée « user ». Le repo étant privé, il faut y avoir accès.
+Au démarrage suivant, Claude Code installe le mod, puis le met à jour tout seul à chaque nouveau commit sur `main`. Le repo étant privé, il faut y avoir accès (`gh auth login` ou une clé SSH GitHub).
+
+Si tu l'as déjà installé à la main (`/plugin install plan-review --marketplace clement-vassant/plan-review`), active la mise à jour automatique dans `/plugin` → Marketplaces → plan-review → Enable auto-update.
+
+### Publier une mise à jour
+
+Pousse sur `main`, c'est tout. `plugin.json` n'a volontairement pas de `version` : Claude Code identifie alors chaque version par son commit, donc chaque push est une mise à jour. C'est aussi pourquoi `claude plugin validate` affiche un avertissement sur la version et qu'on ne lance pas `--strict`.
 
 ## Vérifier
 
 ```bash
-claude plugin validate ./plan-review
+claude plugin validate ./plan-review   # un avertissement « No version » est attendu
 claude plugin test ./plan-review
+./plan-review/scripts/test-packaging.sh   # auto-update : pas de version, noms cohérents, installation réelle dans un HOME jetable
 ```
 
 `/plan-reset` efface le plan suivi pour le dossier courant.
