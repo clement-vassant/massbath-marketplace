@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  mod:
+  marketplace:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,9 +13,14 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g @anthropic-ai/claude-code
-      - name: Validate
+      - name: Validate (marketplace et plugins)
         run: claude plugin validate .
-      - name: Test
-        run: claude plugin test .
+      - name: Test (chaque plugin)
+        run: |
+          for dir in $(jq -r '.plugins[].source' .claude-plugin/marketplace.json); do
+            echo "::group::$dir"
+            claude plugin test "$dir"
+            echo "::endgroup::"
+          done
       - name: Packaging (auto-update, installation dans un HOME isolé)
         run: bash scripts/test-packaging.sh
