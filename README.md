@@ -20,8 +20,6 @@ Then install the plugins you want, with "user" scope:
 /plugin install plan-review@massbath-marketplace
 ```
 
-The repo is private, so you need access to it (`gh auth login` or a GitHub SSH key).
-
 Finally, turn on automatic updates: `/plugin` → Marketplaces → massbath-marketplace → **Enable auto-update**. Claude Code then fetches each new commit on `main` at startup.
 
 ## Development
@@ -55,3 +53,11 @@ scripts/test-packaging.sh                    # no version, consistent names, rea
 ```
 
 CI (`.github/workflows/check.yml`) runs the same checks on every push.
+
+## Contributing
+
+Issues are welcome; pull requests are not accepted. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)

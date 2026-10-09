@@ -1,0 +1,25 @@
+name: Bug report
+description: Something in a plugin doesn't work as expected
+labels: [bug]
+body:
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin
+      placeholder: plan-review
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead (error text if any).
+    validations:
+      required: true

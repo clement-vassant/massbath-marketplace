@@ -1,0 +1,23 @@
+name: close-external-prs
+
+# Last resort: PR creation is restricted to collaborators in the repo settings.
+# If an outside PR still gets through, close it and point to the issues.
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    if: >-
+      !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          gh pr close "$PR" --repo "$REPO" --comment "Thanks for your interest! Pull requests are not accepted on this repository; please open an issue instead: https://github.com/$REPO/issues/new/choose (see CONTRIBUTING.md)."
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}

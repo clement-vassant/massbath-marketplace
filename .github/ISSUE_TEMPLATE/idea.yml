@@ -1,0 +1,15 @@
+name: Idea or question
+description: Suggest an improvement or ask about a plugin
+labels: [enhancement]
+body:
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin
+      placeholder: plan-review
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea or question
+    validations:
+      required: true
