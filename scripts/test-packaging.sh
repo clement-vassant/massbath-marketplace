@@ -95,11 +95,11 @@ for plugin in $plugins; do
 done
 
 # 4. Nothing that looks like a secret or a workspace identifier is published: the repo is public.
-#    Slack tokens, GitHub tokens, Slack channel, DM and group IDs. Placeholders like <channel ID> pass.
+#    Slack tokens, GitHub tokens, Slack channel, DM, group and user IDs. Placeholders like <channel ID> pass.
 for plugin in $plugins; do
   source=$(jq -r --arg p "$plugin" '.plugins[] | select(.name == $p) | .source' "$MARKETPLACE_JSON")
   [ -d "$ROOT/$source" ] || continue
-  leaks=$(grep -rnIE 'xox[abposr]-|ghp_[A-Za-z0-9]{20,}|github_pat_|\b[CDG]0[A-Z0-9]{8,10}\b' "$ROOT/$source" || true)
+  leaks=$(grep -rnIE 'xox[abposr]-|ghp_[A-Za-z0-9]{20,}|github_pat_|\b[CDG]0[A-Z0-9]{8,10}\b|\b[UW]0[A-Z0-9]{7,10}\b' "$ROOT/$source" || true)
   if [ -z "$leaks" ]; then
     pass "$plugin: no token or Slack ID in $source"
   else

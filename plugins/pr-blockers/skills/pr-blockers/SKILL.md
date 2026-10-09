@@ -8,17 +8,18 @@ description: >-
   and in the Jira notifications received on Slack, cross-checks the sources to spot what
   contradicts the ticket, separates what blocks the merge from what blocks the release, and
   lists the people to follow up with, with one draft per person. Nothing is sent.
-  Configures itself per repo (forge, tracker, CLIs or connectors available) and prefers
-  CLIs over MCP connectors. Use it whenever the user asks "where is my PR at", "what's
-  blocking PR #1234", "what's blocking MR !42", "where is my merge request at", "who
-  should I chase", "PR status", "MR status", "the PR is stuck", "why won't it merge",
-  "status of my PRs", or pastes a PR or MR URL asking for a status — even without
-  mentioning blockers or follow-ups. Also when they wait for an answer (PO, reviewer,
-  partner) on a PR's or MR's ticket and want to know whether it was given elsewhere, or
-  want to check that the ticket is still up to date. Also "--setup" / "reconfigure
-  pr-blockers" to redo the repo's configuration. French triggers: « où en est ma PR »,
-  « qu'est-ce qui bloque la PR », « qui dois-je relancer ». Not for applying review
-  feedback nor for doing a code review.
+  Configures itself per repo and prefers CLIs over MCP connectors. Use when the
+  user asks "where is my PR at", "what's blocking PR #1234", "what's blocking MR !42",
+  "where is my merge request at", "who should I chase", "PR status", "MR status", "the PR
+  is stuck", "why won't it merge", "status of my PRs", or pastes a PR or MR URL asking for
+  a status — even without mentioning blockers or follow-ups. Also when they wait for an
+  answer (PO, reviewer, partner) on a PR/MR's ticket and want to know whether it was given
+  elsewhere, want to check that the ticket is still up to date, or want to spot
+  contradictions between the ticket, the PR/MR, the docs and the conversations. Also
+  "--setup" / "reconfigure pr-blockers" to redo the repo's configuration. French triggers:
+  « où en est ma PR », « qu'est-ce qui bloque la PR », « qui dois-je relancer », « état de
+  la PR », « la PR est bloquée », « pourquoi ça ne merge pas », « point sur mes PR ». Not
+  for applying review feedback nor for code review.
 argument-hint: "[pr-or-mr-number | url] [--setup]"
 ---
 
@@ -29,7 +30,8 @@ and who needs to be chased?** "Change request" means a Pull Request on GitHub or
 Request on GitLab (written PR/MR below); the method is the same, only the commands change.
 The skill is read-only: it collects, cross-checks, and writes drafts. It posts nothing, resolves no
 thread, pushes nothing — a badly targeted follow-up, or one sent twice, costs more than a
-copy-paste. The only thing it writes is the repo's personal profile, git-ignored (step 0).
+copy-paste. The only things it writes are the repo's personal profile and, once, the line
+in `.git/info/exclude` that keeps it git-ignored (step 0).
 
 Write the report in the user's language; each follow-up draft is in the language of the
 thread it replies to.
@@ -53,15 +55,24 @@ rather than receiving it directly — an output proxy (rtk, for example) can tru
 JSON and drop the end of a comment, which is often where the reservation is. To separate
 outputs, avoid `echo ===…`: in zsh, `=word` is a command expansion and the line fails.
 
+`$SCRATCH` in the reference files is that scratchpad: the session's scratchpad directory
+when the environment gives one, else a `mktemp -d` made once and reused — never the repo
+or the current directory. Bash calls don't share variables: each block sets the ones it
+uses (`SCRATCH`, `PR`, `REPO`…) at its top, with literal values.
+
 ## 0. Setup: configure for this repo
 
 Every run starts here; procedure and commands in `references/setup.md`.
 
-1. Identify the repo (`git remote get-url origin`, else the URL argument) and its forge,
-   GitHub or GitLab, self-hosted included.
+1. Identify the repo and its forge, GitHub or GitLab, self-hosted included. A URL argument
+   wins: its host and project define the repo. The cwd's `git remote get-url origin` is
+   used when there is no URL, or to tell whether the cwd is that same repo.
 2. Read the repo's profile, `.claude/pr-blockers.local.json` at the main checkout's root:
    personal, git-ignored locally (never committed), shared by the repo's worktrees. Not in
-   a git repo (URL argument only) → run without a profile and say so. Fresh → use it, only re-check the forge CLI's auth.
+   a git repo, or the cwd's origin is not the URL's host/project → run on the URL's repo
+   without a profile, don't read or touch the cwd's, and say so in one line (to get one,
+   rerun from a clone of that repo). Fresh → use it, re-check the forge CLI's auth and any
+   source recorded as `none`.
    Missing, stale, or `--setup` → detect the forge CLI, the tracker and each source's tool
    (CLI, else connector, else missing), save the profile, say where in one line.
 3. Missing or unauthenticated → never install or log in for the user: a short "Setup"
@@ -74,7 +85,8 @@ Then load only what this repo needs: `references/forge-github.md` or
 `references/tracker-linear.md` (forge issues as a tracker are in the forge file).
 
 **Change request and user.** The argument (number or URL), otherwise the one for the
-current branch; a URL from another repo → target that repo in every command. User: the
+current branch; with a URL, target its repo explicitly in every command (`--repo` / `-R`,
+`--hostname`, the project in API paths), never the cwd's. User: the
 forge's current login — you need to know who "I" am to tell "I'm waiting on someone" from
 "someone is waiting on me".
 
@@ -156,8 +168,8 @@ ticket's Jira thread shows none of that.
    (`slack_search_public_and_private`) for the ticket key, and keep the results posted by
    the Jira Cloud app (bot/app author named "Jira" or "Jira Cloud") in a channel whose ID
    starts with `D` (a DM). If several DMs match, take the one with the most Jira-app
-   messages, and name the one you used in the report. Save it to
-   the repo profile's `slack.jiraNotificationsDm` (references/setup.md § 4) and say so in one line.
+   messages, and name the one you used in the report. When this run has a profile, save it
+   to its `slack.jiraNotificationsDm` (references/setup.md § 4) and say so in one line.
 3. If nothing is found (no Slack connector, Jira app not installed in Slack, no
    notification yet) → "Not verified: no Jira notifications DM found in Slack", and
    continue with the next steps. Never guess a channel.
@@ -405,6 +417,6 @@ empty section. A person concerned by several points gets a single draft that gro
 If nothing blocks **either the merge or the release**, say so in one line ("ready to merge
 and ship, nobody to follow up with") and stop there.
 
-Then offer, in one line, to post a follow-up — but post nothing without the user's explicit
-approval of the final text. Mention syntax differs by tool (see the tracker reference file):
+Then offer, in one line, to post a follow-up. The skill itself never posts: a post happens
+only if the user explicitly asks for it after validating the final text. Mention syntax differs by tool (see the tracker reference file):
 a mention in the wrong format is escaped and nobody is notified.

@@ -1,7 +1,8 @@
 # Tracker: Jira (and Confluence)
 
 Order: `acli` (Atlassian's official CLI) → community `jira` CLI → Atlassian MCP connector.
-Use the tool saved in the profile; redirect outputs to a scratchpad file.
+Use the tool saved in the profile; redirect outputs to `"$SCRATCH"/…` (the scratchpad,
+SKILL.md "Tools", never the repo).
 
 ## acli
 
@@ -10,8 +11,8 @@ profile's `trackerSite`; otherwise `acli jira auth switch`. Not logged in → su
 `acli jira auth login --web`.
 
 ```bash
-acli jira workitem view KEY-1 --fields '*all' --json > ticket.json         # status, assignee, parent, issuelinks, description
-acli jira workitem comment list --key KEY-1 --paginate --json > comments.json
+acli jira workitem view KEY-1 --fields '*all' --json > "$SCRATCH"/ticket.json   # status, assignee, parent, issuelinks, description
+acli jira workitem comment list --key KEY-1 --paginate --json > "$SCRATCH"/comments.json
 acli jira workitem link list --key KEY-1 --json                           # is blocked by / blocks / relates
 acli jira workitem search --jql 'parent = EPIC-1' --fields 'key,summary,status,assignee' --json --paginate
 acli jira workitem search --jql 'project = PROJ AND text ~ "keyword" AND updated >= -30d' --json --limit 50
@@ -26,7 +27,9 @@ acli jira workitem search --jql 'project = PROJ AND text ~ "keyword" AND updated
 
 Confluence with acli: `acli confluence page view --id <page-id> --body-format storage
 --include-version --json` reads a known page (ID from a link). acli has no Confluence
-search: CQL search goes through the connector (`searchConfluenceUsingCql`).
+search: CQL search goes through the connector (`searchConfluenceUsingCql`), preferred for
+Confluence whenever it is present; with acli alone, read only the pages already linked and
+put "Confluence search" under "Not verified" (setup.md § 3).
 
 ## Community jira-cli (ankitpokhrel/jira-cli)
 

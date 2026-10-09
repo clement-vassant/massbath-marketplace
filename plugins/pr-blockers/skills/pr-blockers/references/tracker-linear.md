@@ -32,7 +32,7 @@ linear_q 'query($id: String!) { issue(id: $id) {
   relations { nodes { type relatedIssue { identifier title state { name type } assignee { name } } } }
   inverseRelations { nodes { type issue { identifier title state { name type } assignee { name } } } }
   comments(first: 100) { nodes { body createdAt user { name displayName } parent { id } url } }
-} }' '{"id": "ENG-123"}' > ticket.json
+} }' '{"id": "ENG-123"}' > "$SCRATCH"/ticket.json   # the scratchpad (SKILL.md "Tools"), never the repo
 ```
 
 - `issue(id:)` accepts the human key (`ENG-123`) as well as the UUID.

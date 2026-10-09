@@ -12,7 +12,7 @@ It reads the change request (reviews, unresolved threads, CI, conflicts, stacked
 - **For you to handle**, **Questions to ask**, **To follow up**: who has the ball, since how many business days, with one paste-ready draft per person, in the language of the thread it replies to.
 - **Not verified**: every source it could not reach, and what that leaves uncovered.
 
-It is read-only. Nothing is posted, no thread is resolved, nothing is pushed: it offers to post a follow-up only once you approve the final text. The only file it writes is the repo's personal profile (see below).
+It is read-only. Nothing is posted, no thread is resolved, nothing is pushed: it can offer to post a follow-up, but posts only if you explicitly ask after validating the final text. The only things it writes are the repo's personal profile (see below) and, once, the line in `.git/info/exclude` that keeps it git-ignored.
 
 ## Usage
 
@@ -45,7 +45,7 @@ The skill never installs anything nor logs in for you. A missing or unauthentica
 
 Every run starts by working out, for the repo at hand, its forge, its tracker and the tool that reaches each source. Two repos can belong to two companies, with another forge, Jira site or Slack workspace, so this is decided per repo.
 
-The result is saved to `.claude/pr-blockers.local.json` at the root of the repo's main checkout: personal, never committed (the skill adds it to the clone's `.git/info/exclude`, without touching any tracked file), and shared by all the repo's worktrees. A profile younger than 30 days is reused as is; only the forge CLI's login is re-checked. Delete the file or pass `--setup` to start over.
+The result is saved to `.claude/pr-blockers.local.json` at the root of the repo's main checkout: personal, never committed (the skill adds it to the clone's `.git/info/exclude`, without touching any tracked file), and shared by all the repo's worktrees. A profile younger than 30 days is reused; only the forge CLI's login, and any source recorded as missing, are re-checked. With a PR/MR URL from another repo than the current directory's, the skill runs on the URL's repo without a profile and leaves the current one alone. Delete the file or pass `--setup` to start over.
 
 ## Jira notifications on Slack
 
