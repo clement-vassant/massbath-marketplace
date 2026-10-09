@@ -5,6 +5,7 @@ Clément's Claude Code marketplace: mods, skills and other plugins, each in `plu
 | Plugin | What it does |
 | --- | --- |
 | [plan-review](plugins/plan-review/README.md) | Visual tracking of a plan executed by subagents, with a review between each task |
+| [pr-blockers](plugins/pr-blockers/README.md) | Read-only diagnosis of what blocks a pull or merge request, with a follow-up draft per person |
 
 ## Installation
 
@@ -18,6 +19,7 @@ Then install the plugins you want, with "user" scope:
 
 ```
 /plugin install plan-review@massbath-marketplace
+/plugin install pr-blockers@massbath-marketplace
 ```
 
 Finally, turn on automatic updates: `/plugin` → Marketplaces → massbath-marketplace → **Enable auto-update**. Claude Code then fetches each new commit on `main` at startup.
@@ -40,6 +42,8 @@ Don't install the same plugin from the marketplace at the same time.
 2. Add it to `.claude-plugin/marketplace.json` (`"source": "./plugins/<name>"`).
 3. Add its `/plugin install <name>@massbath-marketplace` line above and a row in the table.
 
+A mod has a `hooks/hooks.json` and gets `claude plugin test`; a skill plugin has `skills/<name>/SKILL.md` and no hooks, and CI skips the mod tests for it. `scripts/test-packaging.sh` checks both kinds.
+
 ### Publishing an update
 
 Push to `main`, that's all. The `plugin.json` files deliberately have no `version`: Claude Code then identifies each version by the repo's commit, so every push is an update (for every plugin in the marketplace). That is also why `claude plugin validate` warns about the version and why `--strict` isn't used.
@@ -48,8 +52,8 @@ Push to `main`, that's all. The `plugin.json` files deliberately have no `versio
 
 ```bash
 claude plugin validate .                     # one "No version" warning per plugin is expected
-claude plugin test plugins/plan-review
-scripts/test-packaging.sh                    # no version, consistent names, real install in a throwaway HOME
+claude plugin test plugins/plan-review       # mods only: plugins with a hooks/hooks.json
+scripts/test-packaging.sh                    # no version, consistent names, well-formed skills, no token or Slack ID, real install in a throwaway HOME
 scripts/test-remote-install.sh               # anonymous install from GitHub: no token, no SSH, sterile env
 ```
 

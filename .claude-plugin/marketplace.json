@@ -9,6 +9,11 @@
       "name": "plan-review",
       "description": "Visual tracking of a plan executed by subagents, with a review between each task",
       "source": "./plugins/plan-review"
+    },
+    {
+      "name": "pr-blockers",
+      "description": "Read-only diagnosis of what blocks a pull or merge request — reviews, CI, tickets, answers given elsewhere — with a follow-up draft per person",
+      "source": "./plugins/pr-blockers"
     }
   ]
 }
