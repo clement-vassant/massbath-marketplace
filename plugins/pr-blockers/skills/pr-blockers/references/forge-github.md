@@ -35,6 +35,8 @@ gh api --hostname "$HOST" "repos/$REPO/pulls/$PR/reviews"  --paginate --jq '.[] 
 gh api --hostname "$HOST" graphql -f query="{ repository(owner:\"$OWNER\", name:\"$NAME\") { pullRequest(number:$PR) {
   reviewThreads(first:100) { nodes { isResolved isOutdated path
     comments(first:30) { nodes { author { login } createdAt body url } } } } } } }"
+gh api --hostname "$HOST" "repos/$REPO/issues/$PR/timeline" --paginate \
+  --jq '.[] | select(.event=="review_requested") | {at: .created_at, reviewer: (.requested_reviewer.login // .requested_team.slug)}'   # since when each review is requested
 ```
 
 `reviewThreads` is not a valid field of `gh pr view --json`: go through GraphQL.
@@ -44,11 +46,23 @@ gh api --hostname "$HOST" graphql -f query="{ repository(owner:\"$OWNER\", name:
 
 - **Reviews**: `reviewRequests` = requested, not yet responded. `CHANGES_REQUESTED` in
   `latestReviews` is still active until that reviewer approves or the review is dismissed.
-- **Invalidated approval**: a `DISMISSED` review, or an `APPROVED` review whose
-  `commit_id` is not `headRefOid` while `reviewDecision` ≠ `APPROVED` → re-approval to
-  request from that reviewer.
+  `mergeStateStatus` `CLEAN` or `HAS_HOOKS` → the pending requests are not required: list
+  them as optional ("reviewers requested, not required"), not as merge blockers. Don't
+  query branch protection to find out: it needs admin rights.
+- **Review bodies**: reservations usually sit in the REST reviews' `body` (an `APPROVED`
+  with "but before enabling…"), not only in threads: read them all.
+- **Invalidated approval**: judge each reviewer by their **latest** review only (REST
+  reviews, last `submitted_at` per `user`). Latest is `DISMISSED`, or `APPROVED` with a
+  `commit_id` that is not `headRefOid` while `reviewDecision` ≠ `APPROVED` → re-approval to
+  request from that reviewer. Take `commit_id` from the REST reviews call:
+  `latestReviews[].commit.oid` comes back empty from `gh pr view --json`. An older
+  dismissed review followed by an approval on head is not a re-approval to ask for.
 - **Conflicts**: `mergeable == CONFLICTING`, or `mergeStateStatus` = `DIRTY` (conflict) or
   `BEHIND` (branch must be updated). `BLOCKED` = a required review or check is missing.
+- **Dependency PRs** named in the body ("depends on #123", a PR URL): extract every `#\d+`
+  and PR URL, then `gh pr view <n> -R "$HOST/$REPO" --json number,state,title,url` (a URL
+  from another repo: its own `-R`); an issue number answers "not found" as a PR, skip it.
+  Open dependency → blocker.
 - **CI log** (failure vs infrastructure): the check's `link` contains
   `/actions/runs/<run-id>/job/<job-id>`; then `gh run view <run-id> -R "$HOST/$REPO" --log-failed` (or
   `--job <job-id> --log-failed`), redirected to `"$SCRATCH"/ci.log`, and read the end.

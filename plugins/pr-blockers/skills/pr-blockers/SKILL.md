@@ -52,8 +52,11 @@ reference file that holds its commands.
 
 Long outputs (comment bodies, JSON): redirect each one to a scratchpad file and read it,
 rather than receiving it directly — an output proxy (rtk, for example) can truncate a long
-JSON and drop the end of a comment, which is often where the reservation is. To separate
-outputs, avoid `echo ===…`: in zsh, `=word` is a command expansion and the line fails.
+JSON and drop the end of a comment, which is often where the reservation is. Read those
+files with the Read tool: under a proxy even `cat` or `jq` to stdout gets cut. A proxy hook
+can also mangle multi-command lines (`VAR=…; for …`): write the loop to `"$SCRATCH"/x.sh`
+and run that script. To separate outputs, avoid `echo ===…`: in zsh, `=word` is a command
+expansion and the line fails.
 
 `$SCRATCH` in the reference files is that scratchpad: the session's scratchpad directory
 when the environment gives one, else a `mktemp -d` made once and reused — never the repo
@@ -71,10 +74,11 @@ Every run starts here; procedure and commands in `references/setup.md`.
    personal, git-ignored locally (never committed), shared by the repo's worktrees. Not in
    a git repo, or the cwd's origin is not the URL's host/project → run on the URL's repo
    without a profile, don't read or touch the cwd's, and say so in one line (to get one,
-   rerun from a clone of that repo). Fresh → use it, re-check the forge CLI's auth and any
-   source recorded as `none`.
+   rerun from a clone of that repo). Fresh → use it, re-check the forge CLI's auth (a real
+   `user` API call: `auth status` gives false negatives) and any source recorded as `none`.
    Missing, stale, or `--setup` → detect the forge CLI, the tracker and each source's tool
-   (CLI, else connector, else missing), save the profile, say where in one line.
+   (CLI, else connector, else missing), save the profile (with Jira, at the end of step 2b
+   once the DM is known: one save), say where in one line.
 3. Missing or unauthenticated → never install or log in for the user: a short "Setup"
    block at the top of the report gives the exact fix command, and the diagnosis goes on
    with what is available, gaps under "Not verified". Only the forge is mandatory: without
@@ -102,14 +106,22 @@ To extract:
   changes (GitHub `CHANGES_REQUESTED`), unresolved threads or discussions — and for each one **who
   spoke last**. If it is the user, the ball is in the reviewer's court (to follow up);
   otherwise it is in the user's court (to handle, not to chase). An approval invalidated by
-  a push (dismissed, given on an older commit while the approval requirement is no longer
-  met, or reset on push by a GitLab rule) is a re-approval to request from that reviewer.
+  a push is a re-approval to request from that reviewer — judged on each reviewer's
+  **latest** review only (dismissed, or given on an older commit while the approval
+  requirement is no longer met, or reset on push by a GitLab rule); an old dismissed review
+  superseded by an approval on head is not one. If the forge says mergeable (GitHub
+  `mergeStateStatus` `CLEAN` or `HAS_HOOKS`, GitLab `detailed_merge_status == mergeable`),
+  pending review requests are not merge blockers: list them as optional ("reviewers
+  requested, not required"). Don't rely on branch-protection APIs (they need admin).
+  Reservations usually sit in **review bodies** (REST reviews), not only in threads.
 - **CI**: failing or stuck checks or pipeline jobs, with the job name. Tell a change
   failure from an infrastructure failure (expired token, runner) when the log shows it.
 - **Conflicts**: the forge reports conflicts, or the branch is behind its target when the
   repo requires it to be up to date.
 - **Stacked PR/MR**: the target branch is not the default branch → find the PR/MR
-  whose source branch is that target; if it is open, that is a blocker.
+  whose source branch is that target; if it is open, that is a blocker. Same for
+  dependencies named in the body ("depends on #123", `!123` on GitLab, a PR/MR URL):
+  check each one's state.
 - Ignore bot authors for reviews, but not for CI (Sonar, etc.).
 
 Forge, tracker and Slack timestamps are in UTC: convert them to the local time zone
@@ -164,12 +176,14 @@ ticket's Jira thread shows none of that.
 1. `slack.jiraNotificationsDm` in the repo profile (each repo can sit on its own Slack
    workspace); otherwise a channel ID
    named for that purpose in the user's instructions or memory (CLAUDE.md, memory files).
-2. Otherwise discover it: with the Slack connector, search messages
-   (`slack_search_public_and_private`) for the ticket key, and keep the results posted by
-   the Jira Cloud app (bot/app author named "Jira" or "Jira Cloud") in a channel whose ID
-   starts with `D` (a DM). If several DMs match, take the one with the most Jira-app
-   messages, and name the one you used in the report. When this run has a profile, save it
-   to its `slack.jiraNotificationsDm` (references/setup.md § 4) and say so in one line.
+2. Otherwise discover it: with the Slack connector, `slack_search_public_and_private` with
+   `query` = the ticket key, `channel_types: "im"`, `include_bots: true`,
+   `response_format: "detailed"` (concise hides channel IDs), `sort: "timestamp"`. Keep the
+   results posted by the Jira app (author "Jira" or "Jira Cloud") in a DM (ID starting
+   with `D`; a group DM can start with `C` — not a public channel either). If several DMs
+   match, take the one with the most Jira-app messages, and name the one you used in the
+   report. When this run has a profile, save it to its `slack.jiraNotificationsDm` (for a
+   profile just detected, its single save; references/setup.md § 4) and say so in one line.
 3. If nothing is found (no Slack connector, Jira app not installed in Slack, no
    notification yet) → "Not verified: no Jira notifications DM found in Slack", and
    continue with the next steps. Never guess a channel.
@@ -179,8 +193,9 @@ key, its epic and its links) and the DM is known. The DM is verbose (tracking UR
 avatars): the sub-agent absorbs that noise and returns only a table.
 
 > Read the Jira notifications in the Slack DM `<DM channel ID>` (`slack_read_channel`,
-> concise format, paginating; `oldest` = the PR/MR's creation date <date>, or
-> that of the oldest open question if earlier). Read-only. Load the Slack connector via
+> concise format, paginating; `oldest` = epoch seconds of the PR/MR's creation date
+> <date>, or of the oldest open question if earlier: `date -j -u -f %Y-%m-%dT%H:%M:%SZ <iso> +%s`
+> on macOS, `date -u -d <iso> +%s` on GNU). Read-only. Load the Slack connector via
 > ToolSearch. Jira: <resolved tool>, commands in <absolute path of tracker-jira.md>.
 > Tickets in scope: <main key>, epic <key>, links <keys>. Add any ticket that appears in the
 > notifications and whose parent is that epic (check the parent in Jira, do not guess it
@@ -190,7 +205,9 @@ avatars): the sub-agent absorbs that noise and returns only a table.
 > URL), link.
 > - Deduplicate by comment id: a repeated notification is an edit, keep the most recent.
 > - The Slack excerpt is **truncated** (often cut off with "…"): for any in-scope mention
->   or comment, reread the full comment in Jira before summarizing it.
+>   or comment, reread the full comment in Jira before summarizing it. Slack keeps the
+>   original text of an edited comment: compare with Jira's `updated` and always quote the
+>   Jira version.
 > - For each mention of the user, say whether they replied **afterwards** in the Jira thread
 >   (their own comments do not generate notifications: check in Jira).
 > - For a comment on a sibling ticket, say in one sentence whether it touches the scope of
@@ -236,13 +253,15 @@ keeps the main context clean:
 > Open questions: <numbered list: text, author, addressee, date, keywords>.
 > Silent reviewers: <list of login + since when>.
 > Search from each question's date: ticket key, PR/MR number/URL, keywords,
-> people's names.
+> people's names. Budget: about 15 searches, at most 5 threads read in full — a guideline;
+> go past it only on a strong lead.
 > <source-specific instructions>
 > For each question, return: `answer found | partial lead | nothing`, with author, exact
 > date and time, link and a short quote (≤ 2 sentences). Also flag any recent discussion
 > about the change/ticket that changes the situation (decision made, priority changed,
 > someone on leave).
-> Ticket statements (reference state): <list marker → statement>.
+> Ticket statements (reference state, each quoted with its source): <list marker →
+> statement>. Pass only claims quoted with their source, never your own reconstruction.
 > Also return, topic by topic, **any statement found on the same topic** (rule, value,
 > contract, expected behavior, scope), whether it confirms or contradicts the ticket: quoted
 > text, author, role if known, date-time, link, and whether it is a decision, a proposal or
@@ -252,17 +271,23 @@ Per-source instructions:
 
 - **Slack**: public and private search (ticket key, PR/MR number and URL, keywords),
   excluding the Jira notifications DM, already read in 2b. Read the threads found in full — the answer is often in a thread reply.
-  Spot announced absences ("on leave until…") of the people to chase.
+  Spot announced absences ("on leave until…") of the people to chase. `include_context:
+  false` saves tokens; `response_format: "detailed"` when you need links or channel IDs.
 - **Confluence**: CQL on the ticket key and the keywords (specs, meeting notes, decisions);
-  look at pages modified after the question's date.
+  look at pages modified after the question's date. To date a single line, use the page's
+  version history (tracker-jira.md § Atlassian MCP connector).
 - **Tracker** (excluding the main ticket, already read in step 2): epic/parent, linked
   tickets and sibling tickets, a text search on the same project — product answers often
-  land on the epic ticket or a neighboring ticket. With forge issues as the tracker, the
-  forge's issue search plays this role.
-- **Gmail**: start by checking which mailbox is connected (its own address). If it is not
-  the mailbox where the project's exchanges arrive (another employer's mailbox, a personal
-  one), do not search: return "connected mailbox = <address>, out of scope" for the Not
-  verified section. Otherwise, search on the ticket key, the partner's name and the
+  land on the epic ticket or a neighboring ticket. With Jira and step 2b running, the 2b
+  agent already covers sibling tickets seen in notifications: focus on linked tickets and
+  JQL search. With forge issues as the tracker, the forge's issue search plays this role.
+- **Gmail**: skipped if the profile records `gmail: none` with a `gmailAccount`. Otherwise
+  start by checking which mailbox is connected: search `in:sent`, metadata only, 1 result,
+  and read the address on the SENT-labelled message (a sent thread's first message can be
+  incoming). If it is not the mailbox where the project's exchanges arrive (another
+  employer's, a personal one), do not search: return "connected mailbox = <address>, out of
+  scope" for the Not verified section; the main agent records it in the profile (setup.md
+  § 3). Otherwise, search on the ticket key, the partner's name and the
   keywords, from each question's date. Return sender, date, subject and the useful excerpt;
   flag relevant attachments (a sample payload to attach to the ticket, for example). Never
   quote off-topic personal information.
@@ -277,7 +302,8 @@ activation, an activation ticket waiting on other tickets). Put each blocker in 
 two:
 
 - **Blocks the merge**: missing or invalidated review, requested changes, unresolved
-  blocking discussion, red CI, conflict, base PR/MR still open.
+  blocking discussion, red CI, conflict, base PR/MR still open. A conditional blocker
+  (merge order with another open PR/MR) goes here too, marked "conditional".
 - **Blocks the release**: anything that has to be settled before the code actually serves
   (flag activation, acceptance testing, product or partner sign-off, linked tickets).
 
@@ -331,6 +357,9 @@ file it under "Answers found elsewhere" with the note "tracking page to update".
 stays open if someone else still has to validate it explicitly (a partner who has not
 confirmed, while the team made it a condition), and then you must say so.
 
+A deadline the user set ("unless objection by Wednesday") that has passed: silence counts
+as consent only if nobody objected; an objection keeps the question open.
+
 Cross-check: a question for which an agent found an answer is **no longer** a blocker — it
 becomes "answer found on <source>, to carry over to the ticket/PR/MR" (an action
 for the user, not a follow-up). A partial lead stays open, but the follow-up can build on
@@ -347,11 +376,12 @@ it.
 
 **Closing windows.** Spot nearby deadlines announced in the sources ("I'm sending the
 questions to the partner around noon", "committee tomorrow morning", "release freeze on
-Friday", "on leave from Thursday"). If a question to ask or a follow-up has to go out before
+Friday", "on leave from Thursday"); a planned meeting (refinement, committee) counts. If a question to ask or a follow-up has to go out before
 that deadline to avoid losing a cycle, it is the most actionable point of the report: put it
 at the top, with the current local time and the deadline.
 
-Follow-up channel: the one where the question was asked (forge thread for a reviewer,
+Follow-up channel: the one a source sets for questions, if any ("all questions go on the
+Questions page"); otherwise the one where the question was asked (forge thread for a reviewer,
 ticket comment for a product question), or a direct Slack message if the question has
 already been followed up without effect on that channel. The draft quotes the question and
 its link, stays short, and is in the language of the original thread.
@@ -360,7 +390,7 @@ its link, stays short, and is in the language of the original thread.
 
 ```
 ## <PR #n | MR !n> — <title>
-<url> · <one-line status: e.g. "approved, CI green, blocked by 2 PO questions">
+<url> · <one-line status: e.g. "approved, CI green, blocked by 2 PO questions"; with a long release table, a count: "3 decisions + 1 dependency">
 
 ### Setup
 - <missing or unauthenticated tool> → `<exact fix command>` (type `! <command>` in Claude Code)

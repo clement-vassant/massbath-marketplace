@@ -7,7 +7,7 @@ Jira), so this is decided per repo, never globally.
 
 Never install anything, never log in, never change a CLI's config on the user's behalf:
 those are the user's calls. Detection only reads (`--version`, `auth status`, `ssh -G`,
-ToolSearch). The only files written are the repo profile below and, once, a line in the
+ToolSearch, a `user` API call). The only files written are the repo profile below and, once, a line in the
 clone's local `info/exclude` so git ignores it.
 
 ## 1. Identify the repo and the forge
@@ -45,8 +45,8 @@ Which repo, and which profile:
 Forge from the host:
 
 - `github.com` → GitHub. `gitlab.com` → GitLab.
-- Any other host: `gh auth status --hostname <host>` succeeds → GitHub Enterprise;
-  `glab auth status --hostname <host>` succeeds → self-hosted GitLab; a host name
+- Any other host: the GitHub auth test of § 3 succeeds → GitHub Enterprise; the GitLab
+  one succeeds → self-hosted GitLab; a host name
   containing `gitlab` or `github` is a strong hint. Still unknown → ask the user, and save
   the answer.
 
@@ -84,8 +84,10 @@ esac
     "tracker": "acli",
     "confluence": "mcp",
     "slack": "mcp",
-    "gmail": "mcp"
+    "gmail": "none"
   },
+  "gmailAccount": "someone@personal.example",
+  "gmailReason": "connected mailbox is not the work one",
   "slack": { "jiraNotificationsDm": "<DM channel ID>" },
   "checkedAt": "2026-01-15T09:30:00Z"
 }
@@ -96,13 +98,15 @@ Values: `forge` ∈ `github | gitlab`; `host` = the real forge host (SSH alias r
 `tracker` ∈ `jira | linear | github-issues | gitlab-issues | none`; `trackerSite` = the
 Jira site, when the tracker is Jira; each tool ∈ `gh | glab | acli | jira | linear | curl |
 mcp | none`; `slack.jiraNotificationsDm` (optional) = the DM where this repo's Slack
-workspace receives Jira notifications, filled in by SKILL.md step 2b.
+workspace receives Jira notifications, filled in by SKILL.md step 2b; `gmailAccount` /
+`gmailReason` (optional) = the connected Gmail address and why it is not used (§ 3).
 
 - **Fresh** (profile exists, `checkedAt` less than 30 days old, no `--setup` argument):
-  use it. Re-check the forge CLI's auth (`gh auth status --hostname <host>` /
-  `glab auth status --hostname <host>`, exit code is enough), and re-probe, cheaply, every
-  source recorded as `none` (`command -v`, ToolSearch, as in § 3): one that became
-  available is written to the profile (§ 4). If a source fails during the run, re-detect
+  use it. Re-check the forge CLI's auth (the `user` call of § 3), and re-probe, cheaply,
+  every source recorded as `none` (`command -v`, ToolSearch, as in § 3): one that became
+  available is written to the profile (§ 4). Exception: a Gmail recorded `none` with a
+  `gmailAccount` (wrong mailbox, § 3) is re-checked only with `--setup` or when the
+  connector's address changes. If a source fails during the run, re-detect
   that source alone and update the profile.
 - **Missing, stale, or `--setup` / "reconfigure"** → full detection below. With `--setup`,
   show the resulting profile and stop there unless a change request was also given.
@@ -113,8 +117,13 @@ workspace receives Jira notifications, filled in by SKILL.md step 2b.
 
 | Forge | Present | Authenticated for the host | Fix |
 |-------|---------|----------------------------|-----|
-| GitHub | `command -v gh` | `gh auth status --hostname <host>` (exit 0) | `brew install gh` · `gh auth login --hostname <host> --web` |
-| GitLab | `command -v glab` | `glab auth status --hostname <host>` (exit 0) | `brew install glab` · `glab auth login --hostname <host> --web` |
+| GitHub | `command -v gh` | `gh api --hostname <host> user -q .login` (exit 0 and a login) | `brew install gh` · `gh auth login --hostname <host> --web` |
+| GitLab | `command -v glab` | `glab api --hostname <host> user \| jq -r .username` (exit 0 and a username) | `brew install glab` · `glab auth login --hostname <host> --web` |
+
+Test auth with a real `user` call, not `auth status`: `gh auth status` exits 1 as soon as
+any keyring account for that host has a bad token, even when the active one works — a false
+"forge missing". Run `gh auth status --hostname <host>` / `glab auth status --hostname
+<host>` only to word the diagnostic once the `user` call has failed.
 
 (Install commands are the Homebrew ones; on another system point to the CLI's install
 page.) No usable forge CLI → try the forge's MCP connector via ToolSearch as a degraded
@@ -142,12 +151,24 @@ else `none` (Confluence is the exception, see below the table):
 | Linear | `command -v linear` (check its `--help`); or `LINEAR_API_KEY` set in the environment → `curl` | ToolSearch "linear" | set `LINEAR_API_KEY` (Linear → Settings → API), or connect the Linear connector |
 | Confluence | `acli confluence auth status` (reads a page by ID only, no search) | ToolSearch "confluence" | connect the Atlassian connector (search needs it) |
 | Slack | — (no common read CLI) | ToolSearch "slack" | connect the Slack connector |
-| Gmail | — | ToolSearch "gmail" | connect the Gmail connector |
+| Gmail | — | ToolSearch "gmail", then the mailbox check below | connect the Gmail connector |
 
 Confluence is the exception to "CLI first": the step 3 Confluence search needs CQL, which
 only the Atlassian connector offers. Whenever the connector is present, record `mcp` for
 Confluence and use acli at most to read a page already linked (by its ID). With acli alone,
 record `acli`: linked pages are read, and "Confluence search" goes under "Not verified".
+
+**Gmail mailbox check.** A connected Gmail can be the wrong mailbox (another employer's, a
+personal one). Check it cheaply: search `in:sent`, metadata only, 1 result, and read the
+account from the result (the sender of the SENT-labelled message, or `authuser` in the view
+URL). Rely on the SENT label, not on the thread's first message: it can be an incoming one.
+Not the mailbox where the project's exchanges arrive → record `"gmail": "none"`,
+`"gmailAccount": "<address>"` and `"gmailReason": "<why>"`, so the next runs don't re-probe
+it as usable.
+
+**Atlassian connectors.** Two can be loaded at once: one with direct tools
+(`getJiraIssue`, `searchConfluenceUsingCql`…), another with `discover` / `executeRead`.
+Either works; for Confluence, prefer the one that exposes CQL search.
 
 A connector that is listed but answers "authentication required" counts as missing, with
 "authenticate the <name> connector" as the fix. For Jira, also check that the CLI is logged
@@ -165,11 +186,15 @@ both writes. First it makes sure git ignores the file without touching any track
 if it is not ignored yet, it adds it to `$common/info/exclude` (local to this clone, never
 committed, shared by its worktrees; a profile stored in git's own dir needs nothing). Then
 it writes the profile, merging into the existing file so the `slack` section is kept. Put
-the detected profile in `PROFILE_JSON` as a literal, with `checkedAt` = now (UTC), and
-report the line it prints ("Profile saved to <path>[, git-ignored via <path>]").
+the detected profile in `PROFILE_JSON` as a literal (the block sets `checkedAt` itself),
+and report the line it prints ("Profile saved to <path>[, git-ignored via <path>]").
+
+Save once per run. When the tracker is Jira and step 2b will look for the notifications
+DM, save at the end of step 2b with `"slack":{"jiraNotificationsDm":"<ID>"}` already in
+`PROFILE_JSON`, rather than saving now and rewriting then.
 
 ```bash
-PROFILE_JSON='{"forge":"gitlab","host":"gitlab.example.com","project":"team/backend","tracker":"jira","tools":{"forge":"glab"},"checkedAt":"2026-01-15T09:30:00Z"}'
+PROFILE_JSON='{"forge":"gitlab","host":"gitlab.example.com","project":"team/backend","tracker":"jira","tools":{"forge":"glab"}}'
 common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=
 case "$common" in
   "")     ROOT=; CFG= ;;
@@ -185,13 +210,14 @@ if [ -n "$CFG" ]; then
     EXCLUDED=", git-ignored via $EX"
   fi
   mkdir -p "$(dirname "$CFG")"; [ -f "$CFG" ] || echo '{}' > "$CFG"
-  jq --argjson p "$PROFILE_JSON" '. * $p' "$CFG" > "$CFG.tmp" && mv "$CFG.tmp" "$CFG" \
-    && echo "Profile saved to $CFG$EXCLUDED"
+  jq --argjson p "$PROFILE_JSON" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. * $p | .checkedAt = $now' \
+    "$CFG" > "$CFG.tmp" && mv "$CFG.tmp" "$CFG" && echo "Profile saved to $CFG$EXCLUDED"
 fi
 ```
 
-The Jira notifications DM, once discovered (SKILL.md step 2b), is saved to the same repo
-profile, with the same path lines and the DM ID as a literal:
+If the profile was already saved earlier in the run, the Jira notifications DM, once
+discovered (SKILL.md step 2b), is added to it with the same path lines and the DM ID as a
+literal:
 
 ```bash
 DM_ID='<DM channel ID>'

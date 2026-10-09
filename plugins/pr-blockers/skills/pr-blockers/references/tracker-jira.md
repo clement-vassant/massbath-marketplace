@@ -11,16 +11,36 @@ profile's `trackerSite`; otherwise `acli jira auth switch`. Not logged in → su
 `acli jira auth login --web`.
 
 ```bash
-acli jira workitem view KEY-1 --fields '*all' --json > "$SCRATCH"/ticket.json   # status, assignee, parent, issuelinks, description
-acli jira workitem comment list --key KEY-1 --paginate --json > "$SCRATCH"/comments.json
-acli jira workitem link list --key KEY-1 --json                           # is blocked by / blocks / relates
-acli jira workitem search --jql 'parent = EPIC-1' --fields 'key,summary,status,assignee' --json --paginate
-acli jira workitem search --jql 'project = PROJ AND text ~ "keyword" AND updated >= -30d' --json --limit 50
+SCRATCH=/path/to/scratchpad   # literal value
+acli jira workitem view SHOP-1 --fields 'summary,status,assignee,parent,issuelinks,description,updated' --json > "$SCRATCH"/ticket.json
+acli jira workitem view SHOP-1 --fields comment --json > "$SCRATCH"/comments.json
+acli jira workitem search --jql 'parent = SHOP-10' --fields 'key,summary,status,assignee' --json --paginate
+acli jira workitem search --jql 'project = SHOP AND text ~ "keyword" AND updated >= -30d' --json --limit 50
 ```
 
-- `*all` is heavy; once you know which fields you need, list them (`--fields
-  'summary,status,assignee,parent,issuelinks,description'`) or extract with `jq`.
-- Descriptions and comment bodies come in ADF (JSON document): extract the text nodes with
+Render the comments (author, date, id, text with mentions and links) from the saved file:
+
+```bash
+jq -r '.fields.comment.comments[] | "--- [\(.id)] \(.author.displayName) \(.created)\n" + ([.body|..|objects| if .type=="mention" then "@"+(.attrs.text|ltrimstr("@")) elif .type=="text" then .text elif .type=="hardBreak" or .type=="paragraph" then "\n" elif .type=="inlineCard" then .attrs.url else empty end]|join(""))' "$SCRATCH"/comments.json > "$SCRATCH"/comments.txt
+jq '.fields.comment | {total, maxResults}' "$SCRATCH"/comments.json
+```
+
+- Comments come from `view --fields comment`, not `comment list`: `comment list --json`
+  returns no dates and strips mention nodes, and with `--paginate` it prints one JSON
+  document per page (the last one empty) — slurp them with `jq -s` if you ever use it.
+- `total` > `maxResults` → the list is capped: say which comments were not read. A mention
+  can render as an opaque account placeholder instead of a name: resolve it from the
+  context or say so, never guess.
+- Links, parent, status, assignee come from `view` (`issuelinks` holds both directions,
+  with each linked ticket's key and status). Not `workitem link list`: inward links come
+  back without key or status.
+- `search --fields` accepts only a few fields (`key`, `summary`, `status`, `assignee`,
+  `issuetype`, `priority`); `updated`, `created`, `parent` are rejected ("field '…' is not
+  allowed"). Anything that needs dates or the parent → one `view` per ticket.
+- Comment edit history is not available (acli nor API): the current Jira text is the one to
+  quote, even if a notification showed an older wording.
+- `*all` is heavy: list the fields you need, as above.
+- Descriptions come in ADF (JSON document): extract the text nodes with
   `jq '.. | .text? // empty'` rather than reading the raw tree.
 - `parent` gives the epic on team-managed and recent company-managed projects; on older
   projects the epic can be in an "Epic Link" custom field.
@@ -45,6 +65,15 @@ granted"), and pass it to every call. Read the ticket with `getJiraIssue` (comme
 included), search with `searchJiraIssuesUsingJql`, Confluence with
 `searchConfluenceUsingCql` / `getConfluencePage`. Ask only for the fields you need: the
 connector returns whole objects.
+
+Two Atlassian connectors can be loaded side by side: one with direct tools (`getJiraIssue`,
+`searchConfluenceUsingCql`…), another with `discover` / `executeRead`. Either works; for
+Confluence, prefer the one that exposes CQL search.
+
+Who wrote a given line of a Confluence page, and when (the page's modification date covers
+the whole page): use the page's version-history and version-diff operations, found through
+the connector's `discover`. Request the full response: restricting the response fields can
+return an empty diff.
 
 ## Mentions in drafts
 

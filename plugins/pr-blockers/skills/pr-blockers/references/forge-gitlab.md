@@ -63,7 +63,12 @@ glab api --hostname "$HOST" projects/$P/merge_requests/$MR/discussions --paginat
 `glab mr note list $MR -R "$R" -F json --state unresolved` gives the same data, but is marked
 experimental: prefer the API. System notes (`"system": true`) carry the history — "approved
 this merge request", "added N commits", "requested review from" — useful for dating an
-approval against the last push.
+approval against the last push, and for dating each review request:
+
+```bash
+glab api --hostname "$HOST" "projects/$P/merge_requests/$MR/notes?sort=asc" --paginate \
+  | jq '.[] | select(.system and (.body | test("requested review from"))) | {at: .created_at, body}'
+```
 
 CI:
 
@@ -78,7 +83,9 @@ glab api --hostname "$HOST" projects/$P/jobs/<job-id>/trace > "$SCRATCH"/job.log
 - **Reviews**: `reviewers` who have not approved nor commented since being requested are
   silent reviewers. A resolvable discussion not resolved is an open thread; who spoke last
   = author of its last note. `blocking_discussions_resolved == false` means the project
-  requires resolved threads before merging (merge blocker).
+  requires resolved threads before merging (merge blocker). `detailed_merge_status ==
+  mergeable` → reviewers still pending are not required: list them as optional
+  ("reviewers requested, not required"), not as merge blockers.
 - **Approvals**: `approvals_left > 0` → missing approval; with rules, say which rule and its
   eligible approvers.
 - **Invalidated approval**: if the project resets approvals on push, the approval simply
@@ -98,6 +105,9 @@ glab api --hostname "$HOST" projects/$P/jobs/<job-id>/trace > "$SCRATCH"/job.log
   open → blocker. GitLab also has explicit MR dependencies (`blocked_status`): see
   `glab api --hostname "$HOST" projects/$P/merge_requests/$MR/blocks` (check it exists on
   the instance).
+- **Dependency MRs** named in the description ("depends on !123", an MR URL): extract every
+  `!\d+` and MR URL, then `glab mr view <n> -R "$R" -F json | jq '{iid, state, title, web_url}'`
+  (a URL from another project: its own `-R`). Open dependency → blocker.
 - Bot authors: usernames with `bot` in them (`project_<id>_bot…`, `ghost`, renovate…).
 - **Diff** (reference state, step 2): `glab mr diff $MR -R "$R" --raw > "$SCRATCH"/mr.diff`,
   then read only the files that carry the behavior.
