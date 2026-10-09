@@ -50,9 +50,10 @@ Push to `main`, that's all. The `plugin.json` files deliberately have no `versio
 claude plugin validate .                     # one "No version" warning per plugin is expected
 claude plugin test plugins/plan-review
 scripts/test-packaging.sh                    # no version, consistent names, real install in a throwaway HOME
+scripts/test-remote-install.sh               # anonymous install from GitHub: no token, no SSH, sterile env
 ```
 
-CI (`.github/workflows/check.yml`) runs the same checks on every push.
+CI (`.github/workflows/check.yml`) runs the first three on every push; `.github/workflows/remote-install.yml` runs the anonymous install on every push to `main` and once a day.
 
 ## Contributing
 

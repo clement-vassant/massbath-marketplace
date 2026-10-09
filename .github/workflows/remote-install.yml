@@ -1,0 +1,33 @@
+name: remote-install
+
+# Installs the marketplace from GitHub as an anonymous stranger would,
+# once the commit is published on main, and every day in case GitHub or Claude Code change.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: remote-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code
+      # The script runs claude under env -i: GITHUB_TOKEN and the runner's git and SSH setup never reach it.
+      # On a push, the plugin must be installed at the pushed commit; on a schedule, at main's current commit.
+      - name: Anonymous install from GitHub
+        run: bash scripts/test-remote-install.sh "$GITHUB_REPOSITORY" "${{ github.event_name == 'push' && github.sha || '' }}"
