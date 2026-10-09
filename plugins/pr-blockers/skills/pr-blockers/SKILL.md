@@ -29,7 +29,7 @@ and who needs to be chased?** "Change request" means a Pull Request on GitHub or
 Request on GitLab (written PR/MR below); the method is the same, only the commands change.
 The skill is read-only: it collects, cross-checks, and writes drafts. It posts nothing, resolves no
 thread, pushes nothing — a badly targeted follow-up, or one sent twice, costs more than a
-copy-paste. The only thing it writes is its own local config file (step 0).
+copy-paste. The only thing it writes is the repo's personal profile, git-ignored (step 0).
 
 Write the report in the user's language; each follow-up draft is in the language of the
 thread it replies to.
@@ -59,8 +59,9 @@ Every run starts here; procedure and commands in `references/setup.md`.
 
 1. Identify the repo (`git remote get-url origin`, else the URL argument) and its forge,
    GitHub or GitLab, self-hosted included.
-2. Read the repo's profile in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/pr-blockers/config.json`
-   (user-level: no repo gets polluted). Fresh → use it, only re-check the forge CLI's auth.
+2. Read the repo's profile, `.claude/pr-blockers.local.json` at the main checkout's root:
+   personal, git-ignored locally (never committed), shared by the repo's worktrees. Not in
+   a git repo (URL argument only) → run without a profile and say so. Fresh → use it, only re-check the forge CLI's auth.
    Missing, stale, or `--setup` → detect the forge CLI, the tracker and each source's tool
    (CLI, else connector, else missing), save the profile, say where in one line.
 3. Missing or unauthenticated → never install or log in for the user: a short "Setup"
@@ -148,15 +149,15 @@ ticket's Jira thread shows none of that.
 
 **Find the DM first**, in this order:
 
-1. `slack.jiraNotificationsDm` in the config file (or the repo profile's
-   `jiraNotificationsDm`, for a repo on another Slack workspace); otherwise a channel ID
+1. `slack.jiraNotificationsDm` in the repo profile (each repo can sit on its own Slack
+   workspace); otherwise a channel ID
    named for that purpose in the user's instructions or memory (CLAUDE.md, memory files).
 2. Otherwise discover it: with the Slack connector, search messages
    (`slack_search_public_and_private`) for the ticket key, and keep the results posted by
    the Jira Cloud app (bot/app author named "Jira" or "Jira Cloud") in a channel whose ID
    starts with `D` (a DM). If several DMs match, take the one with the most Jira-app
    messages, and name the one you used in the report. Save it to
-   `slack.jiraNotificationsDm` (local file) and say so in one line.
+   the repo profile's `slack.jiraNotificationsDm` (references/setup.md § 4) and say so in one line.
 3. If nothing is found (no Slack connector, Jira app not installed in Slack, no
    notification yet) → "Not verified: no Jira notifications DM found in Slack", and
    continue with the next steps. Never guess a channel.
@@ -351,7 +352,7 @@ its link, stays short, and is in the language of the original thread.
 
 ### Setup
 - <missing or unauthenticated tool> → `<exact fix command>` (type `! <command>` in Claude Code)
-- Profile saved: <config file path> (<forge> · <tracker> · <tools>)
+- Profile saved to <profile path>[, git-ignored via <info/exclude path>] (<forge> · <tracker> · <tools>)
 
 ### ⏰ Urgent
 - <deadline> (<source, link>) — it is <local time>: <action to take before, pointer to the draft>

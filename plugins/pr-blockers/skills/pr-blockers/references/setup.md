@@ -7,7 +7,8 @@ Jira), so this is decided per repo, never globally.
 
 Never install anything, never log in, never change a CLI's config on the user's behalf:
 those are the user's calls. Detection only reads (`--version`, `auth status`, `ssh -G`,
-ToolSearch). The only file written is the config file below.
+ToolSearch). The only files written are the repo profile below and, once, a line in the
+clone's local `info/exclude` so git ignores it.
 
 ## 1. Identify the repo and the forge
 
@@ -15,7 +16,7 @@ ToolSearch). The only file written is the config file below.
 git remote get-url origin 2>/dev/null   # else: take the PR/MR URL given as argument
 ```
 
-Normalize to a repo key `<host>/<path>`:
+Normalize to `host` and `project` (the repo path), both kept in the profile:
 
 - `git@host:group/sub/name.git`, `ssh://git@host:2222/group/name.git`,
   `https://host/group/name(.git)` → host + path without `.git`. GitLab paths can have
@@ -35,46 +36,49 @@ Forge from the host:
 
 ## 2. Read the profile
 
-File: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/pr-blockers/config.json` — user-level, outside
-every repo, so nothing gets committed by accident and one repo's choices never leak into
-another.
+One profile per repo, personal and never committed:
+`<main checkout>/.claude/pr-blockers.local.json` (the `.local` suffix is Claude Code's
+convention for personal files). Two repos can belong to two different companies — another
+forge, tracker, Jira site and Slack workspace — so nothing is shared between repos. All
+worktrees of a repo share the main checkout's profile:
+
+```bash
+if common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+  case "$common" in
+    */.git) ROOT=$(dirname "$common"); CFG="$ROOT/.claude/pr-blockers.local.json" ;;
+    *)      ROOT=; CFG="$common/pr-blockers.local.json" ;;  # bare repo or unusual layout: in git's own dir
+  esac
+  jq . "$CFG" 2>/dev/null
+else
+  CFG=   # not inside a git repo (URL argument only): run without a profile, say so in one line
+fi
+```
 
 ```json
 {
-  "repos": {
-    "gitlab.example.com/team/backend": {
-      "forge": "gitlab",
-      "tracker": "jira",
-      "trackerSite": "example.atlassian.net",
-      "tools": {
-        "forge": "glab",
-        "tracker": "acli",
-        "confluence": "mcp",
-        "slack": "mcp",
-        "gmail": "mcp"
-      },
-      "checkedAt": "2026-01-15T09:30:00Z"
-    },
-    "github.com/acme/web": {
-      "forge": "github",
-      "tracker": "linear",
-      "tools": { "forge": "gh", "tracker": "curl", "slack": "mcp", "gmail": "none" },
-      "checkedAt": "2026-01-15T09:35:00Z"
-    }
+  "forge": "gitlab",
+  "host": "gitlab.example.com",
+  "project": "team/backend",
+  "tracker": "jira",
+  "trackerSite": "example.atlassian.net",
+  "tools": {
+    "forge": "glab",
+    "tracker": "acli",
+    "confluence": "mcp",
+    "slack": "mcp",
+    "gmail": "mcp"
   },
-  "slack": { "jiraNotificationsDm": "<DM channel ID>" }
+  "slack": { "jiraNotificationsDm": "<DM channel ID>" },
+  "checkedAt": "2026-01-15T09:30:00Z"
 }
 ```
 
-Values: `forge` ∈ `github | gitlab`; `tracker` ∈ `jira | linear | github-issues |
-gitlab-issues | none`; each tool ∈ `gh | glab | acli | jira | linear | curl | mcp | none`.
-Optional per repo: `jiraNotificationsDm`, for a repo whose Slack workspace differs from the
-global one.
-
-```bash
-CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/pr-blockers/config.json"
-jq --arg k "$KEY" '.repos[$k] // empty' "$CFG" 2>/dev/null
-```
+Values: `forge` ∈ `github | gitlab`; `host` = the real forge host (SSH alias resolved);
+`project` = the repo path on the forge (`owner/name`, or `group/subgroup/name` on GitLab);
+`tracker` ∈ `jira | linear | github-issues | gitlab-issues | none`; `trackerSite` = the
+Jira site, when the tracker is Jira; each tool ∈ `gh | glab | acli | jira | linear | curl |
+mcp | none`; `slack.jiraNotificationsDm` (optional) = the DM where this repo's Slack
+workspace receives Jira notifications, filled in by SKILL.md step 2b.
 
 - **Fresh** (profile exists, `checkedAt` less than 30 days old, no `--setup` argument):
   use it. Re-check only the forge CLI's auth (`gh auth status --hostname <host>` /
@@ -127,15 +131,33 @@ not, the fix is `acli jira auth switch`.
 
 ## 4. Save
 
-Write the profile with `checkedAt` = now (UTC), merging into the existing file so other
-repos and the `slack` section are kept, then say in one line: "Profile saved to <path>".
+No `CFG` (not inside a git repo) → nothing is saved; say "No git repo: profile not saved"
+in one line.
+
+Before the first write, make sure git ignores the file without touching any tracked file:
+if it is not ignored yet, add it to `$common/info/exclude` (local to this clone, never
+committed, shared by its worktrees). A profile stored in git's own dir needs nothing.
+
+```bash
+EXCLUDED=
+if [ -n "$ROOT" ] && ! git -C "$ROOT" check-ignore -q .claude/pr-blockers.local.json; then
+  mkdir -p "$common/info"
+  echo '.claude/pr-blockers.local.json' >> "$common/info/exclude"
+  EXCLUDED=", git-ignored via $common/info/exclude"
+fi
+```
+
+Then write the profile with `checkedAt` = now (UTC), merging into the existing file so the
+`slack` section is kept, and say in one line: "Profile saved to <path>" followed by
+`$EXCLUDED` when it is set.
 
 ```bash
 mkdir -p "$(dirname "$CFG")"; [ -f "$CFG" ] || echo '{}' > "$CFG"
-jq --arg k "$KEY" --argjson p "$PROFILE_JSON" '.repos[$k] = $p' "$CFG" > "$CFG.tmp" && mv "$CFG.tmp" "$CFG"
+jq --argjson p "$PROFILE_JSON" '. * $p' "$CFG" > "$CFG.tmp" && mv "$CFG.tmp" "$CFG"
 ```
 
-The Jira notifications DM, once discovered (SKILL.md step 2b), is saved the same way:
+The Jira notifications DM, once discovered (SKILL.md step 2b), is saved to the same repo
+profile, the same way:
 
 ```bash
 jq --arg id "$DM_ID" '.slack.jiraNotificationsDm = $id' "$CFG" > "$CFG.tmp" && mv "$CFG.tmp" "$CFG"
@@ -152,7 +174,7 @@ interactive questions is better run in a separate terminal. Example:
 ### Setup
 - glab not authenticated for gitlab.example.com → `glab auth login --hostname gitlab.example.com --web`
 - Jira: no CLI, no connector → `acli jira auth login --web` (or connect the Atlassian connector)
-- Profile saved: ~/.claude/pr-blockers/config.json (gitlab · jira · glab, mcp for Slack)
+- Profile saved to .claude/pr-blockers.local.json, git-ignored via .git/info/exclude (gitlab · jira · glab, mcp for Slack)
 ```
 
 Each gap also appears under "Not verified" with what it leaves uncovered.
