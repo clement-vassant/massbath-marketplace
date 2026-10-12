@@ -34,13 +34,23 @@ acli jira workitem comment list --key SHOP-1 --paginate --json | jq -s '[.[] | .
 jq 'length' "$SCRATCH"/comments-all.json   # compare with total
 ```
 
-Those give ids and bodies only: dates and mentions come from `view` for the comments it
+Shape of `comment list --paginate --json`: one JSON document per page,
+`{comments:[{id, author, body, visibility}], startAt, maxResults:50, total, isLast}`;
+`author` is a plain display-name string, `body` plain text. The last page can be empty
+with `isLast: true`, and `isLast` can be `false` on a page that already completes the set:
+don't stop on it, trust the filter above. True count directly:
+`acli jira workitem comment list --key SHOP-1 --paginate --json | jq -s '.[0].total'`.
+
+Those give ids, author names and bodies only: dates and mentions come from `view` for the comments it
 returned; for the others, say "date unknown" / "mention not resolved". Count still short
 of `total`, or `comment list` fails → "comments possibly truncated" under "Not verified".
 
 - Comments come from `view --fields comment`; `comment list` only to fill a capped list
   (above): `comment list --json` returns no dates and strips mention nodes, and with
   `--paginate` it prints one JSON document per page (the last one empty) — hence `jq -s`.
+- Browse URLs never appear in acli JSON. Comment link =
+  `https://<site>/browse/<KEY>?focusedCommentId=<id>`, with `<site>` from the profile /
+  `acli jira auth status` and `<id>` from the JSON, both copied verbatim from tool output.
 - A mention can render as an opaque account placeholder instead of a name: resolve it
   from the context or say so, never guess.
 - Links, parent, status, assignee come from `view` (`issuelinks` holds both directions,

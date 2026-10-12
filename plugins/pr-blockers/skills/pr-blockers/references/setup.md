@@ -174,10 +174,12 @@ Confluence and use acli at most to read a page already linked (by its ID). With 
 record `acli`: linked pages are read, and "Confluence search" goes under "Not verified".
 
 **Gmail mailbox check.** A connected Gmail can be the wrong mailbox (another employer's, a
-personal one). Check it cheaply: search `in:sent`, metadata only, 1 result, and read only
-the domain of the SENT-labelled message's sender (or of `authuser` in the view URL). Rely
-on the SENT label, not on the thread's first message: it can be an incoming one. Other
-addresses in the result (recipients, third parties) are ignored: never quoted, never stored.
+personal one). Even a metadata-only search returns sender and recipient addresses into the
+context: unavoidable with the connector, so keep it to the minimum. Search
+`in:sent from:me`, `pageSize: 1`, metadata only, and read only the account's domain: the
+`authuser` in the result's view URL, or the SENT-labelled message's sender. Rely on the
+SENT label, not on the thread's first message: it can be an incoming one. Every other
+address in the result (recipients, third parties) is never quoted, never stored.
 Not the mailbox where the project's exchanges arrive → record `"gmail": "none"`,
 `"gmailReason": "<why, without the address>"` and `"gmailOutOfScopeDomain": "<domain after
 the @>"`, so the next runs don't search it. The address itself is neither stored nor quoted
@@ -263,8 +265,8 @@ proves the skill can see what this change request needs.
 - Run the probes **in parallel** (one message, one Bash or connector call each): forge,
   Slack, Confluence, Gmail. Slack and Confluence test access, not content: any minimal
   query (the repo name, limit 1) will do — don't wait for the ticket key. The tracker probe
-  needs the key: in the same batch when it is already known (URL, branch name), else right
-  after the forge probe (or step 1) gives it, always before step 2.
+  needs the key: key already known (URL, branch name) → it joins the same parallel batch;
+  else right after the forge probe (or step 1) gives it, always before step 2.
 - **Transient** failure (timeout, connection reset, HTTP 5xx, 429 / rate limit) → retry
   once, then declare it. Auth, permission, not-found errors are not retried: they say what
   is wrong.
@@ -317,11 +319,16 @@ No argument at all: `glab mr view -F json | jq '{iid, state, title, source_branc
 
 ### Tracker: read the ticket once
 
+The probe IS the step 2 ticket read: one call on the ticket, not two. Ask it for the fields
+step 2 needs (acli: `--fields` with step 2's list instead of `key,status`; connector:
+`getJiraIssue` with those fields), save the output to `$SCRATCH`, and step 2 reuses that
+file instead of reading the ticket again. Same for Linear and forge issues.
+
 Jira with acli: the account must be on the profile's `trackerSite`, then one view.
 
 ```bash
 acli jira auth status                                       # site and account
-acli jira workitem view SHOP-1 --fields key,status --json   # literal key
+acli jira workitem view SHOP-1 --fields 'summary,status,assignee,parent,issuelinks,description,updated' --json > "$SCRATCH"/ticket.json   # literal key; step 2 reuses this file
 ```
 
 - Not logged in → `acli jira auth login --web`. Logged into another site → `acli jira auth
@@ -333,7 +340,7 @@ acli jira workitem view SHOP-1 --fields key,status --json   # literal key
 
 Jira with the connector: `getAccessibleAtlassianResources`, keep the cloudId whose `url`
 is the `trackerSite` (none → "connector not granted on <site>": reconnect it with an account
-that has access), then `getJiraIssue` on the key with fields `status` only. "Authentication
+that has access), then `getJiraIssue` on the key with step 2's fields. "Authentication
 required" → unauthenticated; 404 → missing ticket or no permission (search the project with
 `searchJiraIssuesUsingJql`, `project = SHOP`, 1 result, to tell them apart).
 
@@ -357,10 +364,10 @@ Forge issues as the tracker: covered by the forge probe; read the issue once
 
 | Source | Probe | Not reachable when |
 |--------|-------|--------------------|
-| Slack | `slack_search_public_and_private`, query = the repo name (or the key if known), 1 result, concise. Profile has a `jiraNotificationsDm` → also check it with the cheapest call (`slack_read_channel`, limit 1); access is already proven by the search, this only checks the ID. Ignore tracking URLs and tokens in the result: never copy them | `not_authed`, `invalid_auth`, "authentication required", `missing_scope`. `channel_not_found` on the DM → drop it, step 2b rediscovers it |
+| Slack | `slack_search_public_and_private`, query = the repo name (or the key if known), 1 result, concise. Profile has a `jiraNotificationsDm` → also check it with the cheapest call (`slack_read_channel`, limit 1); access is already proven by the search, this only checks the ID. Limit 1 still returns one message's content (often a long tracking URL): acceptable, but never copy it, nor any token. Option, if the connector takes `oldest`/`latest`: a window that returns 0 messages proves the ID without content | `not_authed`, `invalid_auth`, "authentication required", `missing_scope`. `channel_not_found` on the DM → drop it, step 2b rediscovers it |
 | Confluence (connector) | `searchConfluenceUsingCql`, `text ~ "<repo name>"`, limit 1, with a cloudId from `getAccessibleAtlassianResources` | authentication required, site not in `getAccessibleAtlassianResources` |
 | Confluence (acli only) | `acli confluence auth status` | not logged in, other site |
-| Gmail | the mailbox check of § 3 (`in:sent`, metadata only, 1 result, only the sender's domain read), every run even when the profile says `mcp` | authentication required; another mailbox → **out of scope**, not "not reachable": saved (§ 2) |
+| Gmail | the mailbox check of § 3 (`in:sent from:me`, `pageSize: 1`, metadata only, only the account's domain read, no other address quoted or stored), every run even when the profile says `mcp` | authentication required; another mailbox → **out of scope**, not "not reachable": saved (§ 2) |
 
 ## 6. Access block in the report
 
