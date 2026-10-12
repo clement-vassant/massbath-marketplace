@@ -110,8 +110,11 @@ channel ID. Never a token, a message or ticket excerpt, a person's name, or an e
 address: for the wrong-mailbox case the domain is enough to notice that the connector now
 points to another account (personal ↔ work), while the local part identifies a person for
 nothing; a switch within the same domain is caught by `--setup`. An older profile's
-`gmailAccount` is dropped at the next save (§ 4). Probe outcomes (§ 5) change from run to
-run and are not saved.
+`gmailAccount` is dropped at the next save (§ 4). Transient probe outcomes (§ 5: OK, not
+reachable) change from run to run and are not saved. A Gmail **out of scope** result is
+configuration and IS saved (`"gmail": "none"` + `gmailReason` + `gmailOutOfScopeDomain`).
+A profile with `"gmail": "mcp"` still gets the mailbox check every run (it is its preflight
+probe); found out of scope → update the profile that way.
 
 - **Fresh** (profile exists, `checkedAt` less than 30 days old, no `--setup` argument):
   use it, then run the preflight (§ 5). Re-detect, cheaply, every source recorded as
@@ -171,9 +174,10 @@ Confluence and use acli at most to read a page already linked (by its ID). With 
 record `acli`: linked pages are read, and "Confluence search" goes under "Not verified".
 
 **Gmail mailbox check.** A connected Gmail can be the wrong mailbox (another employer's, a
-personal one). Check it cheaply: search `in:sent`, metadata only, 1 result, and read the
-account from the result (the sender of the SENT-labelled message, or `authuser` in the view
-URL). Rely on the SENT label, not on the thread's first message: it can be an incoming one.
+personal one). Check it cheaply: search `in:sent`, metadata only, 1 result, and read only
+the domain of the SENT-labelled message's sender (or of `authuser` in the view URL). Rely
+on the SENT label, not on the thread's first message: it can be an incoming one. Other
+addresses in the result (recipients, third parties) are ignored: never quoted, never stored.
 Not the mailbox where the project's exchanges arrive → record `"gmail": "none"`,
 `"gmailReason": "<why, without the address>"` and `"gmailOutOfScopeDomain": "<domain after
 the @>"`, so the next runs don't search it. The address itself is neither stored nor quoted
@@ -200,11 +204,13 @@ if it is not ignored yet, it adds it to `$common/info/exclude` (local to this cl
 committed, shared by its worktrees; a profile stored in git's own dir needs nothing). Then
 it writes the profile, merging into the existing file so the `slack` section is kept. Put
 the detected profile in `PROFILE_JSON` as a literal (the block sets `checkedAt` itself),
-and report the line it prints ("Profile saved to <path>[, git-ignored via <path>]").
+and report the line it prints ("Profile saved to <path>[, git-ignored via <path>]"; no
+suffix means the exclude line already existed → report "already git-ignored").
 
-Save once per run. When the tracker is Jira and step 2b will look for the notifications
-DM, save at the end of step 2b with `"slack":{"jiraNotificationsDm":"<ID>"}` already in
-`PROFILE_JSON`, rather than saving now and rewriting then.
+Save once per run. The tracker is not Jira, or the profile already has the Slack DM →
+save right after the preflight (§ 5), so an out-of-scope Gmail lands in it too. Only when
+step 2b has to discover the DM → save once at the end of 2b, with
+`"slack":{"jiraNotificationsDm":"<ID>"}` already in `PROFILE_JSON`.
 
 ```bash
 PROFILE_JSON='{"forge":"gitlab","host":"gitlab.example.com","project":"team/backend","tracker":"jira","tools":{"forge":"glab"}}'
@@ -255,9 +261,10 @@ read or detected and before SKILL.md step 1, each source gets **one minimal read
 proves the skill can see what this change request needs.
 
 - Run the probes **in parallel** (one message, one Bash or connector call each): forge,
-  Slack, Confluence, Gmail, and the tracker when the key is already known (URL, branch
-  name). Otherwise the tracker probe runs as soon as the forge probe or step 1 gives the
-  key, always before step 2.
+  Slack, Confluence, Gmail. Slack and Confluence test access, not content: any minimal
+  query (the repo name, limit 1) will do — don't wait for the ticket key. The tracker probe
+  needs the key: in the same batch when it is already known (URL, branch name), else right
+  after the forge probe (or step 1) gives it, always before step 2.
 - **Transient** failure (timeout, connection reset, HTTP 5xx, 429 / rate limit) → retry
   once, then declare it. Auth, permission, not-found errors are not retried: they say what
   is wrong.
@@ -265,7 +272,7 @@ proves the skill can see what this change request needs.
   or **out of scope** (Gmail on another mailbox). An empty search result is OK: the probe
   tests access, not content.
 - Only OK sources are used and get a sub-agent; the others go under "Not verified" with the
-  reason. Outcomes are not saved (§ 2).
+  reason. OK / not reachable are not saved; Gmail out of scope is (§ 2).
 - Probes print only identifiers and states: never a token, never `-v` / `--verbose` /
   `GH_DEBUG` / `set -x` (they print the auth header).
 
@@ -350,10 +357,10 @@ Forge issues as the tracker: covered by the forge probe; read the issue once
 
 | Source | Probe | Not reachable when |
 |--------|-------|--------------------|
-| Slack | `slack_search_public_and_private`, query = the ticket key (else the repo name), 1 result, concise. Profile has a `jiraNotificationsDm` → also `slack_read_channel` on it, 1 message | `not_authed`, `invalid_auth`, "authentication required", `missing_scope`. `channel_not_found` on the DM → drop it, step 2b rediscovers it |
-| Confluence (connector) | `searchConfluenceUsingCql`, `text ~ "<key>"`, limit 1, with the cloudId above | authentication required, site not in `getAccessibleAtlassianResources` |
+| Slack | `slack_search_public_and_private`, query = the repo name (or the key if known), 1 result, concise. Profile has a `jiraNotificationsDm` → also check it with the cheapest call (`slack_read_channel`, limit 1); access is already proven by the search, this only checks the ID. Ignore tracking URLs and tokens in the result: never copy them | `not_authed`, `invalid_auth`, "authentication required", `missing_scope`. `channel_not_found` on the DM → drop it, step 2b rediscovers it |
+| Confluence (connector) | `searchConfluenceUsingCql`, `text ~ "<repo name>"`, limit 1, with a cloudId from `getAccessibleAtlassianResources` | authentication required, site not in `getAccessibleAtlassianResources` |
 | Confluence (acli only) | `acli confluence auth status` | not logged in, other site |
-| Gmail | the mailbox check of § 3 (`in:sent`, metadata only, 1 result) | authentication required; another mailbox → **out of scope**, not "not reachable" |
+| Gmail | the mailbox check of § 3 (`in:sent`, metadata only, 1 result, only the sender's domain read), every run even when the profile says `mcp` | authentication required; another mailbox → **out of scope**, not "not reachable": saved (§ 2) |
 
 ## 6. Access block in the report
 
@@ -379,5 +386,8 @@ With gaps:
 - Confluence: no connector → connect the Atlassian connector · Gmail: out of scope (connected mailbox is a personal one)
 - Profile saved to .claude/pr-blockers.local.json, git-ignored via .git/info/exclude (gitlab · linear · glab, curl, mcp for Slack)
 ```
+
+When the exclude line already existed (the save printed no suffix), the last line reads
+`Profile saved to .claude/pr-blockers.local.json, already git-ignored (…)`.
 
 Each source not OK also appears under "Not verified" with what it leaves uncovered.

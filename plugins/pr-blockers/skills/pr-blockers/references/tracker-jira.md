@@ -22,15 +22,27 @@ Render the comments (author, date, id, text with mentions and links) from the sa
 
 ```bash
 jq -r '.fields.comment.comments[] | "--- [\(.id)] \(.author.displayName) \(.created)\n" + ([.body|..|objects| if .type=="mention" then "@"+(.attrs.text|ltrimstr("@")) elif .type=="text" then .text elif .type=="hardBreak" or .type=="paragraph" then "\n" elif .type=="inlineCard" then .attrs.url else empty end]|join(""))' "$SCRATCH"/comments.json > "$SCRATCH"/comments.txt
-jq '.fields.comment | {total, maxResults}' "$SCRATCH"/comments.json
+jq '.fields.comment | {total, maxResults, returned: (.comments|length)}' "$SCRATCH"/comments.json
 ```
 
-- Comments come from `view --fields comment`, not `comment list`: `comment list --json`
-  returns no dates and strips mention nodes, and with `--paginate` it prints one JSON
-  document per page (the last one empty) — slurp them with `jq -s` if you ever use it.
-- `total` > `maxResults` → the list is capped: say which comments were not read. A mention
-  can render as an opaque account placeholder instead of a name: resolve it from the
-  context or say so, never guess.
+Possibly capped: `total == maxResults` (e.g. 20 and 20: exactly 20, or cut at 20?) or
+`total` > `returned`. `view` has no paging flag (`--fields`, `--json`, `--web` only), so
+get the full set from `comment list`, which pages:
+
+```bash
+acli jira workitem comment list --key SHOP-1 --paginate --json | jq -s '[.[] | .. | objects | select(has("id") and has("body"))] | unique_by(.id)' > "$SCRATCH"/comments-all.json
+jq 'length' "$SCRATCH"/comments-all.json   # compare with total
+```
+
+Those give ids and bodies only: dates and mentions come from `view` for the comments it
+returned; for the others, say "date unknown" / "mention not resolved". Count still short
+of `total`, or `comment list` fails → "comments possibly truncated" under "Not verified".
+
+- Comments come from `view --fields comment`; `comment list` only to fill a capped list
+  (above): `comment list --json` returns no dates and strips mention nodes, and with
+  `--paginate` it prints one JSON document per page (the last one empty) — hence `jq -s`.
+- A mention can render as an opaque account placeholder instead of a name: resolve it
+  from the context or say so, never guess.
 - Links, parent, status, assignee come from `view` (`issuelinks` holds both directions,
   with each linked ticket's key and status). Not `workitem link list`: inward links come
   back without key or status.
