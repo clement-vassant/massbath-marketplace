@@ -31,12 +31,23 @@ glab api --hostname "$HOST" user | jq -r .username         # current user
 
 ```bash
 SCRATCH=/path/to/scratchpad R=gitlab.example.com/team/backend MR=42   # literal values
-glab mr view "$MR" -R "$R" -F json > "$SCRATCH"/mr.json   # the API's merge request object
+# get FILE CMD: CMD > FILE, kept only if valid JSON; else one retry after 2 s, then ERROR + no file
+get() { out=$1; shift
+  "$@" > "$out" && jq -e . "$out" >/dev/null 2>&1 && return
+  sleep 2; "$@" > "$out" && jq -e . "$out" >/dev/null 2>&1 && return
+  rm -f "$out"; echo "ERROR: $out (source errored, NOT empty)" >&2; return 1; }
+get "$SCRATCH"/mr.json glab mr view "$MR" -R "$R" -F json &&   # the API's merge request object
 jq '{iid, title, web_url, state, draft, author: .author.username, source_branch, target_branch,
      sha, detailed_merge_status, has_conflicts, blocking_discussions_resolved,
      reviewers: [.reviewers[].username], head_pipeline: .head_pipeline | {id, status, web_url},
      description, created_at, updated_at}' "$SCRATCH"/mr.json
 ```
+
+`ERROR: <file>` = not written (HTTP 5xx, timeout, 429…), already retried once (setup.md
+§ 5): rerun that call; still failing → report the source as **errored**, never as empty.
+Same for every `glab api … | jq` below: an HTTP error on stderr or an empty result after
+one is an error, not "nothing there" — retry once, else errored. Before reading a saved
+file in a later call: `jq -e . "$SCRATCH"/<file>.json >/dev/null`, failing → same rule.
 
 If a field is missing from `glab mr view` output (older glab), read the same object from
 the API: `glab api --hostname "$HOST" projects/$P/merge_requests/$MR`.

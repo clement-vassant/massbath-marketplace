@@ -26,29 +26,44 @@ gh api --hostname "$HOST" user -q .login                      # current user
 ```bash
 SCRATCH=/path/to/scratchpad HOST=github.com REPO=acme/storefront PR=1234   # literal values, see above
 OWNER=${REPO%/*}; NAME=${REPO#*/}
+set -o pipefail
+# get FILE CMD: CMD > FILE, kept only if valid JSON; else one retry after 2 s, then ERROR + no file
+get() { out=$1; shift
+  "$@" > "$out" && jq -e . "$out" >/dev/null 2>&1 && return
+  sleep 2; "$@" > "$out" && jq -e . "$out" >/dev/null 2>&1 && return
+  rm -f "$out"; echo "ERROR: $out (source errored, NOT empty)" >&2; return 1; }
 
-gh pr view "$PR" -R "$HOST/$REPO" --json number,title,url,state,isDraft,author,baseRefName,headRefName,headRefOid,body,\
-mergeable,mergeStateStatus,reviewDecision,reviewRequests,latestReviews,closingIssuesReferences,createdAt,updatedAt
-gh pr checks "$PR" -R "$HOST/$REPO" --json name,state,bucket,link,completedAt,workflow   # CI: bucket = pass|fail|pending|skipping|cancel
-gh api --hostname "$HOST" "repos/$REPO/issues/$PR/comments" --paginate \
-  --jq '[.[] | {user: .user.login, created_at, body}]' | jq -s 'add' > "$SCRATCH"/comments.json
-gh api --hostname "$HOST" "repos/$REPO/pulls/$PR/reviews" --paginate \
-  --jq '[.[] | {user: .user.login, state, commit_id, submitted_at, body}]' | jq -s 'add' > "$SCRATCH"/reviews.json
-gh api --hostname "$HOST" graphql -f query="{ repository(owner:\"$OWNER\", name:\"$NAME\") { pullRequest(number:$PR) {
+view() { gh pr view "$PR" -R "$HOST/$REPO" --json number,title,url,state,isDraft,author,baseRefName,headRefName,headRefOid,body,\
+mergeable,mergeStateStatus,reviewDecision,reviewRequests,latestReviews,closingIssuesReferences,createdAt,updatedAt; }
+checks() { gh pr checks "$PR" -R "$HOST/$REPO" --json name,state,bucket,link,completedAt,workflow  # bucket = pass|fail|pending|skipping|cancel
+  rc=$?; [ "$rc" -eq 8 ] && rc=0; return "$rc"; }   # exit 8 = checks pending, not an error
+comments() { gh api --hostname "$HOST" "repos/$REPO/issues/$PR/comments" --paginate \
+  --jq '[.[] | {user: .user.login, created_at, body}]' | jq -s 'add'; }
+reviews() { gh api --hostname "$HOST" "repos/$REPO/pulls/$PR/reviews" --paginate \
+  --jq '[.[] | {user: .user.login, state, commit_id, submitted_at, body}]' | jq -s 'add'; }
+threads() { gh api --hostname "$HOST" graphql -f query="{ repository(owner:\"$OWNER\", name:\"$NAME\") { pullRequest(number:$PR) {
   reviewThreads(first:100) { nodes { isResolved isOutdated path
-    comments(first:30) { nodes { author { login } createdAt body url } } } } } } }"
-gh api --hostname "$HOST" "repos/$REPO/issues/$PR/timeline" --paginate \
+    comments(first:30) { nodes { author { login } createdAt body url } } } } } } }"; }
+requests() { gh api --hostname "$HOST" "repos/$REPO/issues/$PR/timeline" --paginate \
   --jq '[.[] | select(.event=="review_requested") | {at: .created_at, reviewer: (.requested_reviewer.login // .requested_team.slug)}]' \
-  | jq -s 'add' > "$SCRATCH"/review-requests.json   # since when each review is requested
+  | jq -s 'add'; }   # since when each review is requested
+
+for f in view checks comments reviews threads requests; do get "$SCRATCH/pr-$f.json" "$f"; done
 ```
+
+Each call fails visibly: `ERROR: <file>` = that file was not written (HTTP 5xx,
+timeout, 429…), already retried once (setup.md § 5). Rerun that one call (same snippet, loop
+replaced by e.g. `get "$SCRATCH/pr-view.json" view`); still failing → report the source as
+**errored**, never as "no reviews / no comments". Before reading a snapshot file in a later
+call: `jq -e . "$SCRATCH"/pr-<name>.json >/dev/null`, failing → same rule. Exception: `checks`
+on a PR without any CI fails with "no checks reported" — that means no CI, not an error.
 
 `--paginate --jq '[…]'` prints one array per page; `jq -s 'add'` merges them into one
 array, so the saved files read with `jq '.[]'`. Never `--jq '.[] | {…}'` into a file: that
 is JSON Lines, and a later `jq '.[]'` on it silently iterates field values instead of
 objects. Latest review per reviewer:
-`jq 'group_by(.user) | map(max_by(.submitted_at))' "$SCRATCH"/reviews.json`.
+`jq 'group_by(.user) | map(max_by(.submitted_at))' "$SCRATCH"/pr-reviews.json`.
 `reviewThreads` is not a valid field of `gh pr view --json`: go through GraphQL.
-`gh pr checks` exits with code 8 when checks are pending: that is not an error.
 
 ## Reading the fields
 
