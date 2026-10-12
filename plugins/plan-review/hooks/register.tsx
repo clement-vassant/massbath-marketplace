@@ -14,6 +14,54 @@ const selectedAtom = atom({ plugin: 'plan-review', key: 'selectedAgent' } as con
 
 const PANE = 'plan-review'
 
+// Markdown tables are laid out wider than a docked pane and wrap into a mess:
+// each row becomes a list item, the first cell as its lead, the others nested
+const splitRow = (line: string) => {
+  const cells: string[] = []
+  let cell = ''
+  let code = false
+  const body = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]
+    if (c === '\\' && body[i + 1] === '|') {
+      cell += '|'
+      i++
+    } else if (c === '`') {
+      code = !code
+      cell += c
+    } else if (c === '|' && !code) {
+      cells.push(cell.trim())
+      cell = ''
+    } else cell += c
+  }
+  cells.push(cell.trim())
+  return cells
+}
+const isSeparator = (line: string) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line) && line.includes('-')
+
+export const tablesToLists = (md: string) => {
+  const lines = md.split('\n')
+  const out: string[] = []
+  let fence = false
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    if (fence || !line.includes('|') || !isSeparator(lines[i + 1] ?? '')) {
+      out.push(line)
+      continue
+    }
+    const head = splitRow(line)
+    i += 2
+    for (; i < lines.length && lines[i].includes('|') && lines[i].trim(); i++) {
+      const [first, ...rest] = splitRow(lines[i])
+      out.push(`- ${head[0] ? `**${head[0]}** : ` : ''}${first ?? ''}`)
+      rest.forEach((c, j) => c && out.push(`  - ${head[j + 1] ? `**${head[j + 1]}** : ` : ''}${c}`))
+    }
+    i--
+  }
+  return out.join('\n')
+}
+
 
 const ICON: Record<TaskStatus, string> = {
   todo: '○',
@@ -589,7 +637,7 @@ export const register: Register = on => {
           {a.prompt && (
             <Box flexDirection="column" marginTop={1}>
               <Text bold>Instructions</Text>
-              <Markdown text={a.prompt.length > 700 ? a.prompt.slice(0, 700) + ' …' : a.prompt} dimColor />
+              <Markdown text={tablesToLists(a.prompt.length > 700 ? a.prompt.slice(0, 700) + ' …' : a.prompt)} dimColor />
             </Box>
           )}
           <Box flexDirection="column" marginTop={1}>
@@ -609,7 +657,7 @@ export const register: Register = on => {
           {a.answer && (
             <Box flexDirection="column" marginTop={1}>
               <Text bold>Report</Text>
-              <Markdown text={a.answer} />
+              <Markdown text={tablesToLists(a.answer)} />
             </Box>
           )}
         </Box>
@@ -742,7 +790,7 @@ export const register: Register = on => {
             ◆ {title}
           </Text>
           <Text> </Text>
-          <Markdown text={md.slice(0, 10000)} />
+          <Markdown text={tablesToLists(md.slice(0, 10000))} />
           <Text> </Text>
           {Input && (
           <Input
