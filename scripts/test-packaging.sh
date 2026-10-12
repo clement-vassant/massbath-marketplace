@@ -108,6 +108,30 @@ for plugin in $plugins; do
   fi
 done
 
+# 4b. No real email address, Atlassian site or Slack message link either. Allowed: reserved example
+#     domains (example, example.com/.org/.net and their subdomains, *.example, *.test, *.invalid,
+#     *.localhost), git@ SSH remotes, and example.atlassian.net.
+leak_check() { # plugin, source dir, what, matches (file:line:match, one per line)
+  if [ -z "$4" ]; then
+    pass "$1: no $3 in $2"
+  else
+    fail "$1: $3 in $2"
+    while IFS= read -r line; do echo "       ${line#"$ROOT"/}"; done <<<"$4"
+  fi
+}
+for plugin in $plugins; do
+  source=$(jq -r --arg p "$plugin" '.plugins[] | select(.name == $p) | .source' "$MARKETPLACE_JSON")
+  [ -d "$ROOT/$source" ] || continue
+  emails=$(grep -rnIoE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$ROOT/$source" \
+    | grep -vE ':git@[^:]+$' \
+    | grep -viE '@([A-Za-z0-9-]+\.)*(example\.(com|org|net)|example|test|invalid|localhost)$' || true)
+  leak_check "$plugin" "$source" "real-looking email address" "$emails"
+  sites=$(grep -rnIoE '[A-Za-z0-9-]+\.atlassian\.net' "$ROOT/$source" | grep -vE ':example\.atlassian\.net$' || true)
+  leak_check "$plugin" "$source" "Atlassian site other than example.atlassian.net" "$sites"
+  archives=$(grep -rnIE 'slack\.com/archives/' "$ROOT/$source" || true)
+  leak_check "$plugin" "$source" "Slack message link" "$archives"
+done
+
 # 5. End to end: the marketplace is added and each plugin really installs, in a throwaway HOME.
 #    The real ~/.claude is never touched. No network or account needed.
 sandbox=$(mktemp -d)

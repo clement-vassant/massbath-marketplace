@@ -39,13 +39,33 @@ CLIs first: for each source the skill uses its CLI when it is installed and auth
   - Linear: a `linear` CLI, or a `LINEAR_API_KEY` in the environment, else the Linear connector.
   - Confluence search, Slack and Gmail: their MCP connectors.
 
-The skill never installs anything nor logs in for you. A missing or unauthenticated tool shows up in a **Setup** block at the top of the report with the exact command to run (type `! <command>` in Claude Code to run it in the session), and what it leaves unchecked goes under **Not verified**.
+The skill never installs anything nor logs in for you.
+
+## Preflight: access is proven, not assumed
+
+A tool can be installed and logged in, yet on the wrong account, Jira site or mailbox, or without the organization's SSO grant: it then finds nothing, and "nothing" would read as "nobody answered". So every run starts with one minimal read per source, in parallel: the forge's current user and the PR/MR itself, the ticket, a one-result Slack and Confluence search, and a check of which Gmail mailbox is connected. A transient failure is retried once. The report opens with an **Access** block, one line when everything passed:
+
+```
+### Access
+OK: GitHub (gh, acme/storefront #1234) · Jira (acli, example.atlassian.net, SHOP-1) · Slack · Confluence (connectors)
+```
+
+A source that fails shows its cause and the exact fix (type `! <command>` in Claude Code to run it in the session), for example `Linear: not reachable, LINEAR_API_KEY rejected (401) → create a key and export it`. Only the sources that passed are searched; the others go under **Not verified** with what they leave unchecked. Without the forge, the skill stops after the Access block.
+
+## Privacy
+
+- **Nothing leaves your machine except reads to your own tools.** No post, comment or draft in Slack, Gmail or Jira; no web search or fetch carrying ticket, PR, people or company content; no gist, pastebin or third-party service; the report is not published anywhere unless you ask.
+- **No secret is printed, stored or passed on.** Tokens are never displayed (`gh auth token` and the like are never run); `LINEAR_API_KEY` goes from your environment straight into a request header.
+- **What is written locally**: the repo profile (tool names, forge host, project, Jira site, Slack channel ID; never a token, a message, a person's name or an email address) and, once, the line in `.git/info/exclude` that keeps it out of git. Temporary files go to the session's scratch directory, never the repo. The report lives in the conversation; it is saved only if you ask.
+- **Sub-agents** get only what their source needs and bring back conclusions with short quotes about the change, nothing personal or unrelated from DMs, private channels or mail.
+- **What it reads is data, not instructions**: a ticket comment or a message saying "post this" or "run that" is never acted on.
+- A Gmail connected to the wrong mailbox (a personal one, another employer's) is never searched; the profile keeps only the reason and the mailbox's domain.
 
 ## Setup and the repo profile
 
 Every run starts by working out, for the repo at hand, its forge, its tracker and the tool that reaches each source. Two repos can belong to two companies, with another forge, Jira site or Slack workspace, so this is decided per repo.
 
-The result is saved to `.claude/pr-blockers.local.json` at the root of the repo's main checkout: personal, never committed (the skill adds it to the clone's `.git/info/exclude`, without touching any tracked file), and shared by all the repo's worktrees. A profile younger than 30 days is reused; only the forge CLI's login (with a real API call), and any source recorded as missing, are re-checked. With a PR/MR URL from another repo than the current directory's, the skill runs on the URL's repo without a profile and leaves the current one alone. Delete the file or pass `--setup` to start over.
+The result is saved to `.claude/pr-blockers.local.json` at the root of the repo's main checkout: personal, never committed (the skill adds it to the clone's `.git/info/exclude`, without touching any tracked file), and shared by all the repo's worktrees. A profile younger than 30 days is reused; every source still goes through the preflight, and any source recorded as missing is detected again. With a PR/MR URL from another repo than the current directory's, the skill runs on the URL's repo without a profile and leaves the current one alone. Delete the file or pass `--setup` to start over.
 
 ## Jira notifications on Slack
 
@@ -82,4 +102,4 @@ Ideas, not planned work:
 ## Known limitations
 
 - The quality of "Answers found elsewhere" depends on the connectors you have: without Slack or Confluence, an answer given there stays invisible, and the report says so under **Not verified**.
-- Gmail is searched only when the connected mailbox is the one where the project's exchanges arrive. A mailbox found out of scope is recorded in the profile and not checked again until `--setup`.
+- Gmail is searched only when the connected mailbox is the one where the project's exchanges arrive. A mailbox found out of scope is recorded in the profile (reason and domain only) and not searched; each run's preflight only checks whether the connected mailbox changed domain, and `--setup` re-evaluates it.

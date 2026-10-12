@@ -6,9 +6,12 @@ repos that run differently (one on GitHub with Linear, another on a self-hosted 
 Jira), so this is decided per repo, never globally.
 
 Never install anything, never log in, never change a CLI's config on the user's behalf:
-those are the user's calls. Detection only reads (`--version`, `auth status`, `ssh -G`,
-ToolSearch, a `user` API call). The only files written are the repo profile below and, once, a line in the
-clone's local `info/exclude` so git ignores it.
+those are the user's calls. Detection and preflight only read (`--version`, `auth status`,
+`ssh -G`, ToolSearch, a `user` API call, one minimal read per source). The only files
+written are the repo profile below and, once, a line in the clone's local `info/exclude`
+so git ignores it. Never print a token to find out whether one exists (`gh auth token`,
+`glab config get token`, `echo $LINEAR_API_KEY`): test `[ -n "${LINEAR_API_KEY:-}" ]` or
+make the API call.
 
 ## 1. Identify the repo and the forge
 
@@ -86,8 +89,8 @@ esac
     "slack": "mcp",
     "gmail": "none"
   },
-  "gmailAccount": "someone@personal.example",
-  "gmailReason": "connected mailbox is not the work one",
+  "gmailReason": "connected mailbox is a personal one",
+  "gmailOutOfScopeDomain": "personal.example",
   "slack": { "jiraNotificationsDm": "<DM channel ID>" },
   "checkedAt": "2026-01-15T09:30:00Z"
 }
@@ -98,16 +101,25 @@ Values: `forge` ∈ `github | gitlab`; `host` = the real forge host (SSH alias r
 `tracker` ∈ `jira | linear | github-issues | gitlab-issues | none`; `trackerSite` = the
 Jira site, when the tracker is Jira; each tool ∈ `gh | glab | acli | jira | linear | curl |
 mcp | none`; `slack.jiraNotificationsDm` (optional) = the DM where this repo's Slack
-workspace receives Jira notifications, filled in by SKILL.md step 2b; `gmailAccount` /
-`gmailReason` (optional) = the connected Gmail address and why it is not used (§ 3).
+workspace receives Jira notifications, filled in by SKILL.md step 2b; `gmailReason` /
+`gmailOutOfScopeDomain` (optional) = why the connected Gmail is not used, and the domain of
+that mailbox (§ 3).
+
+The profile holds non-sensitive configuration only: tool names, host, project, site,
+channel ID. Never a token, a message or ticket excerpt, a person's name, or an email
+address: for the wrong-mailbox case the domain is enough to notice that the connector now
+points to another account (personal ↔ work), while the local part identifies a person for
+nothing; a switch within the same domain is caught by `--setup`. An older profile's
+`gmailAccount` is dropped at the next save (§ 4). Probe outcomes (§ 5) change from run to
+run and are not saved.
 
 - **Fresh** (profile exists, `checkedAt` less than 30 days old, no `--setup` argument):
-  use it. Re-check the forge CLI's auth (the `user` call of § 3), and re-probe, cheaply,
-  every source recorded as `none` (`command -v`, ToolSearch, as in § 3): one that became
-  available is written to the profile (§ 4). Exception: a Gmail recorded `none` with a
-  `gmailAccount` (wrong mailbox, § 3) is re-checked only with `--setup` or when the
-  connector's address changes. If a source fails during the run, re-detect
-  that source alone and update the profile.
+  use it, then run the preflight (§ 5). Re-detect, cheaply, every source recorded as
+  `none` (`command -v`, ToolSearch, as in § 3): one that became available is written to
+  the profile (§ 4) and probed. Exception: a Gmail recorded `none` with a
+  `gmailOutOfScopeDomain` (wrong mailbox, § 3) is never searched; its probe only checks
+  whether the connected mailbox's domain changed. If a source fails during the run,
+  re-detect that source alone and update the profile if its tool changed.
 - **Missing, stale, or `--setup` / "reconfigure"** → full detection below. With `--setup`,
   show the resulting profile and stop there unless a change request was also given.
 
@@ -127,7 +139,7 @@ any keyring account for that host has a bad token, even when the active one work
 
 (Install commands are the Homebrew ones; on another system point to the CLI's install
 page.) No usable forge CLI → try the forge's MCP connector via ToolSearch as a degraded
-fallback; if there is none either, stop after the Setup block: without the forge there is
+fallback; if there is none either, stop after the Access block: without the forge there is
 nothing to diagnose.
 
 **Tracker.** Take it from the profile. Otherwise infer it from the change request (body,
@@ -148,7 +160,7 @@ else `none` (Confluence is the exception, see below the table):
 | Source | CLI check (local) | Connector check | Fix to suggest |
 |--------|-------------------|-----------------|----------------|
 | Jira | `command -v acli && acli jira auth status`; or `command -v jira` (community jira-cli, see tracker-jira.md) | ToolSearch "atlassian jira" | `acli jira auth login --web`, or connect the Atlassian connector |
-| Linear | `command -v linear` (check its `--help`); or `LINEAR_API_KEY` set in the environment → `curl` | ToolSearch "linear" | set `LINEAR_API_KEY` (Linear → Settings → API), or connect the Linear connector |
+| Linear | `command -v linear` (check its `--help`); or `[ -n "${LINEAR_API_KEY:-}" ]` (set; never printed) → `curl` | ToolSearch "linear" | set `LINEAR_API_KEY` (Linear → Settings → API), or connect the Linear connector |
 | Confluence | `acli confluence auth status` (reads a page by ID only, no search) | ToolSearch "confluence" | connect the Atlassian connector (search needs it) |
 | Slack | — (no common read CLI) | ToolSearch "slack" | connect the Slack connector |
 | Gmail | — | ToolSearch "gmail", then the mailbox check below | connect the Gmail connector |
@@ -163,8 +175,9 @@ personal one). Check it cheaply: search `in:sent`, metadata only, 1 result, and 
 account from the result (the sender of the SENT-labelled message, or `authuser` in the view
 URL). Rely on the SENT label, not on the thread's first message: it can be an incoming one.
 Not the mailbox where the project's exchanges arrive → record `"gmail": "none"`,
-`"gmailAccount": "<address>"` and `"gmailReason": "<why>"`, so the next runs don't re-probe
-it as usable.
+`"gmailReason": "<why, without the address>"` and `"gmailOutOfScopeDomain": "<domain after
+the @>"`, so the next runs don't search it. The address itself is neither stored nor quoted
+in the report ("connected mailbox is a personal one" is enough).
 
 **Atlassian connectors.** Two can be loaded at once: one with direct tools
 (`getJiraIssue`, `searchConfluenceUsingCql`…), another with `discover` / `executeRead`.
@@ -210,7 +223,7 @@ if [ -n "$CFG" ]; then
     EXCLUDED=", git-ignored via $EX"
   fi
   mkdir -p "$(dirname "$CFG")"; [ -f "$CFG" ] || echo '{}' > "$CFG"
-  jq --argjson p "$PROFILE_JSON" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. * $p | .checkedAt = $now' \
+  jq --argjson p "$PROFILE_JSON" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. * $p | del(.gmailAccount) | .checkedAt = $now' \
     "$CFG" > "$CFG.tmp" && mv "$CFG.tmp" "$CFG" && echo "Profile saved to $CFG$EXCLUDED"
 fi
 ```
@@ -233,18 +246,138 @@ if [ -n "$CFG" ] && [ -f "$CFG" ]; then
 fi
 ```
 
-## 5. Setup block in the report
+## 5. Preflight: prove access
 
-Only when something is missing, unauthenticated, or the profile was just created/updated.
-One line per gap, with the exact command; suggest typing `! <command>` in Claude Code so it
-runs in the session. Logins that open a browser (`--web`) work that way; a login that asks
-interactive questions is better run in a separate terminal. Example:
+A tool that is installed and "logged in" can still be on the wrong account, site or
+mailbox, lack a scope, or lack the organization's SSO grant. Such a source answers nothing,
+and nothing would pass for "no answer was given". So every run, right after the profile is
+read or detected and before SKILL.md step 1, each source gets **one minimal read** that
+proves the skill can see what this change request needs.
+
+- Run the probes **in parallel** (one message, one Bash or connector call each): forge,
+  Slack, Confluence, Gmail, and the tracker when the key is already known (URL, branch
+  name). Otherwise the tracker probe runs as soon as the forge probe or step 1 gives the
+  key, always before step 2.
+- **Transient** failure (timeout, connection reset, HTTP 5xx, 429 / rate limit) → retry
+  once, then declare it. Auth, permission, not-found errors are not retried: they say what
+  is wrong.
+- Each source ends as **OK**, **not reachable** (exact cause from the error, and the fix),
+  or **out of scope** (Gmail on another mailbox). An empty search result is OK: the probe
+  tests access, not content.
+- Only OK sources are used and get a sub-agent; the others go under "Not verified" with the
+  reason. Outcomes are not saved (§ 2).
+- Probes print only identifiers and states: never a token, never `-v` / `--verbose` /
+  `GH_DEBUG` / `set -x` (they print the auth header).
+
+### Forge (mandatory: failure → stop after the Access block)
+
+GitHub: the `user` call, then the PR itself, a few fields only (the title and branch often
+hold the ticket key).
+
+```bash
+HOST=github.com REPO=acme/storefront PR=1234   # literal values (forge-github.md)
+gh api --hostname "$HOST" user -q .login
+gh pr view "$PR" -R "$HOST/$REPO" --json number,state,title,headRefName
+```
+
+No argument at all: `gh pr view --json number,state,title,headRefName` (the current
+branch's PR; `-R` would require a number).
+
+| Error (stderr) | Cause | Fix |
+|----------------|-------|-----|
+| `HTTP 401`, `Bad credentials`, not logged in | token missing or revoked for this host | `gh auth login --hostname <host> --web` |
+| `could not resolve host`, connection refused | wrong host, VPN off | check the host from setup.md § 1; connect the VPN |
+| `Could not resolve to a Repository`, `HTTP 404` on the repo | repo invisible to this account: other account active, missing scope, typo | `gh auth switch --hostname <host>`; `gh auth refresh -h <host> -s repo` |
+| `SAML enforcement`, `SSO`, `HTTP 403` | token not authorized for the organization | open the URL from `gh api --hostname "$HOST" -i "repos/$REPO" 2>&1 \| grep -i '^x-github-sso'` and authorize, then rerun |
+| `Could not resolve to a PullRequest`, `no pull requests found for branch` | wrong number, or no PR for the current branch | ask for the PR number or URL |
+
+GitLab: the same two reads through the API (its errors carry the HTTP status).
+
+```bash
+HOST=gitlab.example.com P=team%2Fbackend MR=42   # literal values (forge-gitlab.md)
+glab api --hostname "$HOST" user | jq -r .username
+glab api --hostname "$HOST" "projects/$P/merge_requests/$MR" | jq '{iid, state, title, source_branch}'
+```
+
+No argument at all: `glab mr view -F json | jq '{iid, state, title, source_branch}'`.
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `401 Unauthorized` | token missing, expired or revoked | `glab auth login --hostname <host> --web` |
+| `403 Forbidden`, `insufficient_scope` | token without `read_api` | log in again, or a token with `read_api` |
+| `404 Project Not Found` (check with `glab api --hostname "$HOST" "projects/$P" \| jq .id`) | private project invisible to this account, or wrong path | log in with the account that has access; check the path |
+| `404 Not found` on the MR, project OK | wrong MR number | ask for the MR number or URL |
+
+### Tracker: read the ticket once
+
+Jira with acli: the account must be on the profile's `trackerSite`, then one view.
+
+```bash
+acli jira auth status                                       # site and account
+acli jira workitem view SHOP-1 --fields key,status --json   # literal key
+```
+
+- Not logged in → `acli jira auth login --web`. Logged into another site → `acli jira auth
+  switch` (do not read a ticket on the wrong site: it answers "not found").
+- The view fails with "does not exist or you do not have permission" (Jira gives the same
+  answer for both) → `acli jira project view --key SHOP --json`: project fails too → no
+  access to the project on that site (ask a Jira admin, or wrong site); project OK →
+  the ticket does not exist (wrong key).
+
+Jira with the connector: `getAccessibleAtlassianResources`, keep the cloudId whose `url`
+is the `trackerSite` (none → "connector not granted on <site>": reconnect it with an account
+that has access), then `getJiraIssue` on the key with fields `status` only. "Authentication
+required" → unauthenticated; 404 → missing ticket or no permission (search the project with
+`searchJiraIssuesUsingJql`, `project = SHOP`, 1 result, to tell them apart).
+
+Community `jira` CLI: `jira me` (auth), then a plain view of the key (check `--help`).
+
+Linear: with `curl`, one query on the key (the `linear_q` function from tracker-linear.md,
+defined in the same Bash call; the key stays in the environment):
+
+```bash
+linear_q 'query($id: String!) { issue(id: $id) { identifier state { name } } }' '{"id": "SHOP-120"}' | jq -c '{data, errors: [.errors[]?.message]}'
+```
+
+`Authentication required` / HTTP 401 → key invalid or revoked (create a new one: Linear →
+Settings → API, and export it); `Entity not found` → wrong key, or an issue outside the
+key's workspace. With a `linear` CLI or the connector: one view of the key, same reading.
+
+Forge issues as the tracker: covered by the forge probe; read the issue once
+(`gh issue view <n> --json number,state` / `glab api … /issues/<n>`).
+
+### Slack, Confluence, Gmail: one read each
+
+| Source | Probe | Not reachable when |
+|--------|-------|--------------------|
+| Slack | `slack_search_public_and_private`, query = the ticket key (else the repo name), 1 result, concise. Profile has a `jiraNotificationsDm` → also `slack_read_channel` on it, 1 message | `not_authed`, `invalid_auth`, "authentication required", `missing_scope`. `channel_not_found` on the DM → drop it, step 2b rediscovers it |
+| Confluence (connector) | `searchConfluenceUsingCql`, `text ~ "<key>"`, limit 1, with the cloudId above | authentication required, site not in `getAccessibleAtlassianResources` |
+| Confluence (acli only) | `acli confluence auth status` | not logged in, other site |
+| Gmail | the mailbox check of § 3 (`in:sent`, metadata only, 1 result) | authentication required; another mailbox → **out of scope**, not "not reachable" |
+
+## 6. Access block in the report
+
+Always at the top of the report, right under the title: the user sees what the diagnosis
+could rely on. One line when everything passed; one line per source that did not, with the
+cause and the exact fix; one line when the profile was saved. Suggest typing `! <command>`
+in Claude Code so the fix runs in the session. Logins that open a browser (`--web`) work
+that way; one that asks interactive questions is better run in a separate terminal.
+
+Everything passed:
 
 ```
-### Setup
-- glab not authenticated for gitlab.example.com → `glab auth login --hostname gitlab.example.com --web`
-- Jira: no CLI, no connector → `acli jira auth login --web` (or connect the Atlassian connector)
-- Profile saved to .claude/pr-blockers.local.json, git-ignored via .git/info/exclude (gitlab · jira · glab, mcp for Slack)
+### Access
+OK: GitHub (gh, acme/storefront #1234) · Jira (acli, example.atlassian.net, SHOP-1) · Slack · Confluence (connectors)
 ```
 
-Each gap also appears under "Not verified" with what it leaves uncovered.
+With gaps:
+
+```
+### Access
+- OK: GitLab (glab, gitlab.example.com) · Slack (connector)
+- Linear: not reachable, `LINEAR_API_KEY` rejected (401) → create a key (Linear → Settings → API) and export it
+- Confluence: no connector → connect the Atlassian connector · Gmail: out of scope (connected mailbox is a personal one)
+- Profile saved to .claude/pr-blockers.local.json, git-ignored via .git/info/exclude (gitlab · linear · glab, curl, mcp for Slack)
+```
+
+Each source not OK also appears under "Not verified" with what it leaves uncovered.

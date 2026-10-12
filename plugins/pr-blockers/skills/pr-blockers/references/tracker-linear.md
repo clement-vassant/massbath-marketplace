@@ -13,8 +13,11 @@ flags; if it cannot show comments, use the API below for them.
 
 ## GraphQL API with curl
 
-Personal API keys go in the `Authorization` header as is (no `Bearer`). The key never goes
-in a file or in the report.
+Personal API keys go in the `Authorization` header as is (no `Bearer`), read from the
+environment at call time. The key never goes in a file, the profile, the report or a
+sub-agent brief (the sub-agent's shell inherits the environment), and is never printed:
+check it with `[ -n "${LINEAR_API_KEY:-}" ]`, not `echo`; no `curl -v` / `--trace`, no
+`set -x` (both print the header).
 
 ```bash
 linear_q() {  # $1 = GraphQL query, $2 = variables JSON

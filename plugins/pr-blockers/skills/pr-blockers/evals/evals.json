@@ -1,6 +1,6 @@
 {
  "skill_name": "pr-blockers",
- "note": "These scenarios are fictional (acme/storefront, SHOP-..., Alice, Bob, Carol, Paylane, gitlab.acme.test): no real repo, ticket or person behind them. To run an eval, point the prompt at one of your own PRs/MRs, keep the generic assertions (forge state, merge vs release split, ball and since when, drafts, nothing posted, Not verified, Setup) and rewrite the scenario ones to match what that PR/MR really contains.",
+ "note": "These scenarios are fictional (acme/storefront, SHOP-..., Alice, Bob, Carol, Paylane, gitlab.acme.test): no real repo, ticket or person behind them. To run an eval, point the prompt at one of your own PRs/MRs, keep the generic assertions (forge state, merge vs release split, ball and since when, drafts, nothing posted, Not verified, Access) and rewrite the scenario ones to match what that PR/MR really contains.",
  "evals": [
   {
    "id": 0,
@@ -44,13 +44,13 @@
   {
    "id": 2,
    "prompt": "what's blocking MR !42? https://gitlab.acme.test/acme/storefront/-/merge_requests/42",
-   "expected_output": "Terminal report on MR !42 (self-hosted GitLab, Linear ticket SHOP-120) on a repo with no profile yet: Setup block first, then the diagnosis with what is available",
+   "expected_output": "Terminal report on MR !42 (self-hosted GitLab, Linear ticket SHOP-120) on a repo with no profile yet: Access block first (each source probed: OK, not reachable with the cause, or missing), then the diagnosis with what is available",
    "files": [],
    "assertions": [
     "With no profile in the repo, step 0 runs a full detection: forge GitLab on gitlab.acme.test (self-hosted, identified via glab auth status --hostname), project acme/storefront, tracker Linear (from the linear.app URL in the MR body)",
     "glab, installed and authenticated for gitlab.acme.test, is used for the MR snapshot rather than a GitLab MCP connector, even if one is available (CLI first)",
-    "The report opens with a \"Setup\" block listing each missing tool with its exact fix command, e.g. Linear: no CLI, no LINEAR_API_KEY, no connector → set LINEAR_API_KEY (Linear → Settings → API) or connect the Linear connector; nothing is installed or logged in on the user's behalf",
-    "The profile is saved to <main checkout>/.claude/pr-blockers.local.json (forge gitlab, host gitlab.acme.test, project acme/storefront, tracker linear, tools per source, checkedAt) and the Setup block says where in one line",
+    "The report opens with an \"Access\" block listing each missing tool with its exact fix command, e.g. Linear: no CLI, no LINEAR_API_KEY, no connector → set LINEAR_API_KEY (Linear → Settings → API) or connect the Linear connector; nothing is installed or logged in on the user's behalf",
+    "The profile is saved to <main checkout>/.claude/pr-blockers.local.json (forge gitlab, host gitlab.acme.test, project acme/storefront, tracker linear, tools per source, checkedAt) and the Access block says where in one line",
     "The profile is git-ignored through the clone's .git/info/exclude; no tracked file (.gitignore included) is modified",
     "The diagnosis goes on despite the missing tracker tool: the GitLab state (approvals, unresolved discussions, pipeline, conflicts) and the merge vs release split are still reported",
     "The gaps appear under \"Not verified\" with what they leave uncovered (e.g. \"Linear not connected: ticket questions not checked\")",
