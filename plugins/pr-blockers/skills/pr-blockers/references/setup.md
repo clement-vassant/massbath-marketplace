@@ -122,7 +122,8 @@ probe); found out of scope → update the profile that way.
   the profile (§ 4) and probed. Exception: a Gmail recorded `none` with a
   `gmailOutOfScopeDomain` (wrong mailbox, § 3) is never searched; its probe only checks
   whether the connected mailbox's domain changed. If a source fails during the run,
-  re-detect that source alone and update the profile if its tool changed.
+  re-detect that source alone and update the profile if its tool changed. Nothing changed
+  → no save; the Access block gets the "Profile used" line (§ 6).
 - **Missing, stale, or `--setup` / "reconfigure"** → full detection below. With `--setup`,
   show the resulting profile and stop there unless a change request was also given.
 
@@ -396,5 +397,28 @@ With gaps:
 
 When the exclude line already existed (the save printed no suffix), the last line reads
 `Profile saved to .claude/pr-blockers.local.json, already git-ignored (…)`.
+
+Fresh profile, nothing changed (§ 2: no save, so no save output) → the line reads
+`Profile used: .claude/pr-blockers.local.json (fresh, <checkedAt date>), already git-ignored`.
+Confirm "already git-ignored" first; if it is not, this block runs the save block's exclude
+step (the one allowed write) and the line ends `, git-ignored via <path>` instead:
+
+```bash
+common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=
+case "$common" in
+  */.git) ROOT=$(dirname "$common") ;;
+  *)      ROOT= ;;                       # profile in git's own dir: never tracked, nothing to do
+esac
+if [ -n "$ROOT" ]; then
+  if git -C "$ROOT" check-ignore -q .claude/pr-blockers.local.json; then
+    echo "already git-ignored"
+  else
+    EX="$common/info/exclude"; mkdir -p "$common/info"
+    if [ -s "$EX" ] && [ "$(tail -c1 "$EX")" ]; then echo >> "$EX"; fi
+    echo '.claude/pr-blockers.local.json' >> "$EX"
+    echo "git-ignored via $EX"
+  fi
+fi
+```
 
 Each source not OK also appears under "Not verified" with what it leaves uncovered.

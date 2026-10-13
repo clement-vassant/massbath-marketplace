@@ -85,7 +85,19 @@ objects. Latest review per reviewer:
 - **Dependency PRs** named in the body ("depends on #123", a PR URL): extract every `#\d+`
   and PR URL, then `gh pr view <n> -R "$HOST/$REPO" --json number,state,title,url` (a URL
   from another repo: its own `-R`); an issue number answers "not found" as a PR, skip it.
-  Open dependency → blocker.
+  Open dependency → blocker. **Merged** dependency: check its merge commit is in head
+  (`CLEAN` doesn't tell):
+
+  ```bash
+  HOST=github.com REPO=acme/storefront DEP=123 HEAD_OID=<headRefOid from pr-view.json>   # literal values
+  M=$(gh pr view "$DEP" -R "$HOST/$REPO" --json state,mergedAt,mergeCommit -q 'select(.state=="MERGED") | .mergeCommit.oid')
+  [ -n "$M" ] && gh api --hostname "$HOST" "repos/$REPO/compare/$M...$HEAD_OID" -q .status
+  ```
+
+  `ahead` / `identical` = included; `behind` / `diverged` = NOT included → merge blocker
+  (rebase on the base branch, then adapt to the dependency). Empty `M` = not merged (open →
+  blocker above; closed unmerged → say so). Never `git fetch`/pull or touch the user's
+  local clone to check this: the forge API answers it.
 - **CI log** (failure vs infrastructure): the check's `link` contains
   `/actions/runs/<run-id>/job/<job-id>`; then `gh run view <run-id> -R "$HOST/$REPO" --log-failed` (or
   `--job <job-id> --log-failed`), redirected to `"$SCRATCH"/ci.log`, and read the end.

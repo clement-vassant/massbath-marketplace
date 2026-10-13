@@ -118,7 +118,23 @@ glab api --hostname "$HOST" projects/$P/jobs/<job-id>/trace > "$SCRATCH"/job.log
   the instance).
 - **Dependency MRs** named in the description ("depends on !123", an MR URL): extract every
   `!\d+` and MR URL, then `glab mr view <n> -R "$R" -F json | jq '{iid, state, title, web_url}'`
-  (a URL from another project: its own `-R`). Open dependency → blocker.
+  (a URL from another project: its own `-R`). Open dependency → blocker. **Merged**
+  dependency: check its merge commit is in head (`mergeable` doesn't tell):
+
+  ```bash
+  HOST=gitlab.example.com R=gitlab.example.com/team/backend P=team%2Fbackend DEP=123 HEAD_SHA=<sha from mr.json>   # literal values
+  M=$(glab mr view "$DEP" -R "$R" -F json | jq -r 'select(.state=="merged") | .merge_commit_sha // .squash_commit_sha // .sha')
+  [ -n "$M" ] && glab api --hostname "$HOST" "projects/$P/repository/merge_base?refs[]=$M&refs[]=$HEAD_SHA" \
+    | jq -r --arg m "$M" 'if .id == $m then "included" else "NOT included" end'
+  ```
+
+  Merge base of A and head == A ⇔ A is an ancestor of head ⇔ included. `NOT included` →
+  merge blocker (rebase on the target branch, then adapt to the dependency).
+  `merge_commit_sha` is null on fast-forward merges: then the squash commit, else the MR's
+  own `sha`, is what landed. Not `repository/compare` (`from`/`to` lists commits in `to`
+  not in `from`: easy to misread). `merge_base` is REST v4 (check it exists on the
+  instance). Empty `M` = not merged. Never `git fetch`/pull or touch the user's local clone
+  to check this: the forge API answers it.
 - Bot authors: usernames with `bot` in them (`project_<id>_bot…`, `ghost`, renovate…).
 - **Diff** (reference state, step 2): `glab mr diff $MR -R "$R" --raw > "$SCRATCH"/mr.diff`,
   then read only the files that carry the behavior.
