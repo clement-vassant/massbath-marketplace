@@ -51,7 +51,88 @@ else
   fail "README: turning on auto-update (\"Enable auto-update\") is not explained"
 fi
 
-# 3. End to end: the marketplace is added and each plugin really installs, in a throwaway HOME.
+# 3. Each skill a plugin ships is well formed: a frontmatter whose name is the skill's folder and
+#    with a description (that is what makes Claude pick it), evals that parse, and every
+#    references/*.md file its SKILL.md points to really there.
+for plugin in $plugins; do
+  source=$(jq -r --arg p "$plugin" '.plugins[] | select(.name == $p) | .source' "$MARKETPLACE_JSON")
+  for skill_md in "$ROOT/$source"/skills/*/SKILL.md; do
+    [ -f "$skill_md" ] || continue
+    skill_dir=$(dirname "$skill_md")
+    skill=$(basename "$skill_dir")
+    frontmatter=$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } NR > 1 { print }' "$skill_md")
+    if [ -z "$frontmatter" ]; then
+      fail "$plugin: skills/$skill/SKILL.md has no frontmatter"
+      continue
+    fi
+    name=$(sed -n 's/^name:[[:space:]]*//p' <<<"$frontmatter" | tr -d "\"'")
+    if [ "$name" = "$skill" ]; then
+      pass "$plugin: skill $skill is named after its folder"
+    else
+      fail "$plugin: skills/$skill/SKILL.md is named \"$name\""
+    fi
+    if grep -qE '^description:[[:space:]]*[^[:space:]]' <<<"$frontmatter"; then
+      pass "$plugin: skill $skill has a description"
+    else
+      fail "$plugin: skills/$skill/SKILL.md has no description"
+    fi
+    evals="$skill_dir/evals/evals.json"
+    if [ -f "$evals" ]; then
+      if jq -e . "$evals" >/dev/null 2>&1; then
+        pass "$plugin: skill $skill evals parse"
+      else
+        fail "$plugin: skills/$skill/evals/evals.json is not valid JSON"
+      fi
+    fi
+    while read -r ref; do
+      if [ -f "$skill_dir/$ref" ]; then
+        pass "$plugin: skill $skill, $ref exists"
+      else
+        fail "$plugin: skills/$skill/SKILL.md points to $ref, which does not exist"
+      fi
+    done < <(grep -oE 'references/[A-Za-z0-9._-]+\.md' "$skill_md" | sort -u)
+  done
+done
+
+# 4. Nothing that looks like a secret or a workspace identifier is published: the repo is public.
+#    Slack tokens, GitHub tokens, Slack channel, DM, group and user IDs. Placeholders like <channel ID> pass.
+for plugin in $plugins; do
+  source=$(jq -r --arg p "$plugin" '.plugins[] | select(.name == $p) | .source' "$MARKETPLACE_JSON")
+  [ -d "$ROOT/$source" ] || continue
+  leaks=$(grep -rnIE 'xox[abposr]-|ghp_[A-Za-z0-9]{20,}|github_pat_|\b[CDG]0[A-Z0-9]{8,10}\b|\b[UW]0[A-Z0-9]{7,10}\b' "$ROOT/$source" || true)
+  if [ -z "$leaks" ]; then
+    pass "$plugin: no token or Slack ID in $source"
+  else
+    fail "$plugin: looks like a token or a Slack ID in $source"
+    while IFS= read -r line; do echo "       ${line#"$ROOT"/}"; done <<<"$leaks"
+  fi
+done
+
+# 4b. No real email address, Atlassian site or Slack message link either. Allowed: reserved example
+#     domains (example, example.com/.org/.net and their subdomains, *.example, *.test, *.invalid,
+#     *.localhost), git@ SSH remotes, and example.atlassian.net.
+leak_check() { # plugin, source dir, what, matches (file:line:match, one per line)
+  if [ -z "$4" ]; then
+    pass "$1: no $3 in $2"
+  else
+    fail "$1: $3 in $2"
+    while IFS= read -r line; do echo "       ${line#"$ROOT"/}"; done <<<"$4"
+  fi
+}
+for plugin in $plugins; do
+  source=$(jq -r --arg p "$plugin" '.plugins[] | select(.name == $p) | .source' "$MARKETPLACE_JSON")
+  [ -d "$ROOT/$source" ] || continue
+  emails=$(grep -rnIoE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$ROOT/$source" \
+    | grep -vE ':git@[^:]+$' \
+    | grep -viE '@([A-Za-z0-9-]+\.)*(example\.(com|org|net)|example|test|invalid|localhost)$' || true)
+  leak_check "$plugin" "$source" "real-looking email address" "$emails"
+  sites=$(grep -rnIoE '[A-Za-z0-9-]+\.atlassian\.net' "$ROOT/$source" | grep -vE ':example\.atlassian\.net$' || true)
+  leak_check "$plugin" "$source" "Atlassian site other than example.atlassian.net" "$sites"
+  archives=$(grep -rnIE 'slack\.com/archives/' "$ROOT/$source" || true)
+  leak_check "$plugin" "$source" "Slack message link" "$archives"
+done
+
+# 5. End to end: the marketplace is added and each plugin really installs, in a throwaway HOME.
 #    The real ~/.claude is never touched. No network or account needed.
 sandbox=$(mktemp -d)
 trap 'rm -rf "$sandbox"' EXIT

@@ -15,9 +15,11 @@ jobs:
       - run: npm install -g @anthropic-ai/claude-code
       - name: Validate (marketplace and plugins)
         run: claude plugin validate .
-      - name: Test (each plugin)
+      - name: Test (each mod)
+        # claude plugin test loads the hooks module: a skill plugin has none, test-packaging checks it instead
         run: |
           for dir in $(jq -r '.plugins[].source' .claude-plugin/marketplace.json); do
+            [ -f "$dir/hooks/hooks.json" ] || { echo "$dir: no hooks, no mod tests"; continue; }
             echo "::group::$dir"
             claude plugin test "$dir"
             echo "::endgroup::"
