@@ -1,0 +1,62 @@
+{
+ "skill_name": "pr-blockers",
+ "note": "These scenarios are fictional (acme/storefront, SHOP-..., Alice, Bob, Carol, Paylane, gitlab.acme.test): no real repo, ticket or person behind them. To run an eval, point the prompt at one of your own PRs/MRs, keep the generic assertions (forge state, merge vs release split, ball and since when, drafts, nothing posted, Not verified, Access) and rewrite the scenario ones to match what that PR/MR really contains.",
+ "evals": [
+  {
+   "id": 0,
+   "prompt": "where is PR 1234 at? what's blocking it and who should I follow up with?",
+   "expected_output": "Terminal report on PR #1234 / SHOP-101 (payment-method export to the partner Paylane), including the Jira notifications received on Slack",
+   "files": [],
+   "assertions": [
+    "The report gives the GitHub state: review decision, CI status and mergeability",
+    "The report explicitly separates what blocks the merge (\"Blocks the merge\") from what blocks the release (\"Blocks the release\")",
+    "Each wait says whose court the ball is in (the user vs someone else) and since when",
+    "Each person to follow up with gets one paste-ready draft that quotes the question and its link",
+    "No write action was taken: nothing posted, sent, resolved or pushed",
+    "Inaccessible sources are listed under a \"Not verified\" section instead of being treated as empty",
+    "The Jira notifications DM was read (from the profile's slack.jiraNotificationsDm or by discovery, naming the one used), or its absence is reported under \"Not verified\" without guessing a channel ID",
+    "Displayed times are in the local time zone, not UTC",
+    "Alice's (PO) latest comment on SHOP-101 is taken into account: question Q7 is closed; what remains open is the value scale and the paymentType field to send to Paylane",
+    "The report has a \"Ticket to bring back in line (SHOP-101)\" section with at least one sourced gap (author, date, link) and replacement text ready to paste into the description",
+    "The conflict between the Confluence questions page (Q7 marked \"Answered\") and a more recent ticket comment saying it is still open is reported with the page's timestamp limit, without being arbitrarily settled"
+   ]
+  },
+  {
+   "id": 1,
+   "prompt": "point sur la PR 1288 : qu'est-ce qui bloque et qui relancer ?",
+   "expected_output": "Rapport terminal sur la PR #1288 / SHOP-106 : mention sans réponse (Carol), réserve sur le contrat d'API (Bob), règle posée sur le ticket frère SHOP-113 (Alice)",
+   "files": [],
+   "assertions": [
+    "The report itself is written in French, the user's language (headings included)",
+    "The report gives the GitHub state: review decision, CI status and mergeability",
+    "The report explicitly separates what blocks the merge from what blocks the release",
+    "Each wait says whose court the ball is in (the user vs someone else) and since when",
+    "Each person to follow up with gets one paste-ready draft that quotes the question and its link, in the language of the thread it replies to",
+    "No write action was taken: nothing posted, sent, resolved or pushed",
+    "Inaccessible sources are listed under a \"Not verified\" section instead of being treated as empty",
+    "Carol's (front-end) unanswered mention on SHOP-106 (\"I don't understand what is expected from me\") is raised under \"For you to handle\" as the ball in the user's court, with a proposed rephrasing under \"Questions to ask\"",
+    "Bob's (reviewer) API-contract reservation is summarized from the full Jira comment (including his final preference), not from the truncated Slack notification excerpt",
+    "The rule Alice (PO) set on the sibling ticket SHOP-113 (an unchanged request returns 200 with status DONE) is quoted and checked against what PR #1288 actually does",
+    "The contradiction between that SHOP-113 rule and the previously agreed 400 refusal for an unchanged request is filed under \"Questions to ask\", with both quotes, without the report settling it",
+    "The outdated PR description (still announcing that an identical request is applied) is listed under \"To propagate\""
+   ]
+  },
+  {
+   "id": 2,
+   "prompt": "what's blocking MR !42? https://gitlab.acme.test/acme/storefront/-/merge_requests/42",
+   "expected_output": "Terminal report on MR !42 (self-hosted GitLab, Linear ticket SHOP-120) on a repo with no profile yet: Access block first (each source probed: OK, not reachable with the cause, or missing), then the diagnosis with what is available",
+   "files": [],
+   "assertions": [
+    "With no profile in the repo, step 0 runs a full detection: forge GitLab on gitlab.acme.test (self-hosted, identified via glab auth status --hostname), project acme/storefront, tracker Linear (from the linear.app URL in the MR body)",
+    "glab, installed and authenticated for gitlab.acme.test, is used for the MR snapshot rather than a GitLab MCP connector, even if one is available (CLI first)",
+    "The report opens with an \"Access\" block listing each missing tool with its exact fix command, e.g. Linear: no CLI, no LINEAR_API_KEY, no connector → set LINEAR_API_KEY (Linear → Settings → API) or connect the Linear connector; nothing is installed or logged in on the user's behalf",
+    "The profile is saved to <main checkout>/.claude/pr-blockers.local.json (forge gitlab, host gitlab.acme.test, project acme/storefront, tracker linear, tools per source, checkedAt) and the Access block says where in one line",
+    "The profile is git-ignored through the clone's .git/info/exclude; no tracked file (.gitignore included) is modified",
+    "The diagnosis goes on despite the missing tracker tool: the GitLab state (approvals, unresolved discussions, pipeline, conflicts) and the merge vs release split are still reported",
+    "The gaps appear under \"Not verified\" with what they leave uncovered (e.g. \"Linear not connected: ticket questions not checked\")",
+    "The Jira-notifications step (2b) is skipped since the tracker is Linear: no Slack DM is searched for or guessed",
+    "The report uses MR !42 wording (not PR #42) and no write action is taken on GitLab or Linear"
+   ]
+  }
+ ]
+}

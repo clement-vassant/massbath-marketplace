@@ -1,0 +1,7 @@
+{
+  "name": "pr-blockers",
+  "author": {
+    "name": "Clément"
+  },
+  "description": "Read-only diagnosis of what blocks a GitHub pull request or GitLab merge request — reviews, CI, conflicts, Jira/Linear tickets, answers given elsewhere — with a follow-up draft per person"
+}

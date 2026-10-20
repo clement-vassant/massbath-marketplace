@@ -72,8 +72,18 @@ for plugin in $plugins; do
     fail "$plugin: installed at ${sha:-nothing}, expected $expected"
   fi
 
+  # What the cache must hold is what the checkout ships: the manifest, the hooks and their modules
+  # for a mod, each skill and its references for a skill plugin.
   path=$(jq -r '.installPath // empty' <<<"$entry")
-  for file in .claude-plugin/plugin.json $(jq -r '.modules[]?' "$path/hooks/hooks.json" 2>/dev/null | sed 's#^\./#hooks/#') hooks/hooks.json; do
+  src="$ROOT/$(jq -r --arg p "$plugin" '.plugins[] | select(.name == $p) | .source' "$MARKETPLACE_JSON")"
+  expected_files=".claude-plugin/plugin.json"
+  if [ -f "$src/hooks/hooks.json" ]; then
+    expected_files="$expected_files hooks/hooks.json $(jq -r '.modules[]?' "$src/hooks/hooks.json" | sed 's#^\./#hooks/#')"
+  fi
+  for skill_file in "$src"/skills/*/SKILL.md "$src"/skills/*/references/*.md; do
+    [ -f "$skill_file" ] && expected_files="$expected_files ${skill_file#"$src"/}"
+  done
+  for file in $expected_files; do
     if [ -f "$path/$file" ]; then pass "$plugin: $file is in the cache"; else fail "$plugin: $file is missing from the cache ($path)"; fi
   done
 done
